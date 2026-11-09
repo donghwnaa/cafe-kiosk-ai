@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/product_confirm_screen"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FFFFFF"
+    android:gravity="center_horizontal"
+    android:orientation="vertical"
+    android:paddingHorizontal="16dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <ImageView
+            android:layout_width="42dp"
+            android:layout_height="42dp"
+            android:contentDescription="커피"
+            android:scaleType="fitCenter"
+            android:src="@drawable/page4_logo_cup" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:paddingStart="8dp"
+            android:text="음성 주문 키오스크"
+            android:textColor="#151515"
+            android:textSize="21sp" />
+
+        <ImageView
+            android:id="@+id/product_home"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:clickable="true"
+            android:contentDescription="처음으로"
+            android:focusable="true"
+            android:padding="5dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/page4_home" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="@drawable/bg_soft_panel"
+        android:orientation="vertical"
+        android:padding="12dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="64dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:contentDescription="AI"
+                android:src="@drawable/ai_profile" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_pink_panel"
+                android:fontFamily="serif"
+                android:padding="12dp"
+                android:text="주문하신 상품이 맞나요?"
+                android:textColor="#151515"
+                android:textSize="19sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="10dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_pink_panel"
+            android:orientation="vertical"
+            android:padding="12dp">
+
+            <ImageView
+                android:layout_width="match_parent"
+                android:layout_height="170dp"
+                android:background="#FFFFFF"
+                android:contentDescription="아메리카노 이미지"
+                android:scaleType="fitCenter"
+                android:src="@drawable/americano" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:gravity="center"
+                android:text="아메리카노"
+                android:textColor="#000000"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:lineSpacingExtra="3dp"
+                android:text="온도 : ICE(차가움)\n크기 : R(보통 크기)\n수량 : 2"
+                android:textColor="#000000"
+                android:textSize="18sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <Space
+        android:layout_width="match_parent"
+        android:layout_height="10dp" />
+
+    <FrameLayout
+        android:layout_width="118dp"
+        android:layout_height="118dp"
+        android:background="@drawable/bg_mic_circle">
+
+        <ImageView
+            android:layout_width="66dp"
+            android:layout_height="66dp"
+            android:layout_gravity="top|center_horizontal"
+            android:layout_marginTop="10dp"
+            android:contentDescription="말하기 안내"
+            android:scaleType="fitCenter"
+            android:src="@drawable/voice_order_icon" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|center_horizontal"
+            android:layout_marginBottom="10dp"
+            android:fontFamily="serif"
+            android:text="말하기"
+            android:textColor="#FFFFFF"
+            android:textSize="21sp" />
+    </FrameLayout>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:fontFamily="serif"
+        android:padding="6dp"
+        android:text="🟢 듣는 중..."
+        android:textColor="#151515"
+        android:textSize="16sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/btn_product_confirm"
+        android:layout_width="match_parent"
+        android:layout_height="58dp"
+        android:background="@drawable/bg_product_cta"
+        android:clickable="true"
+        android:focusable="true"
+        android:fontFamily="serif"
+        android:gravity="center"
+        android:paddingBottom="4dp"
+        android:text="“맞아요”"
+        android:textColor="#FFFFFF"
+        android:textSize="24sp" />
+</LinearLayout>

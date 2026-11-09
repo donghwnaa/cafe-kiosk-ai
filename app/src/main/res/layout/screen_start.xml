@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/start_screen"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FFFFFF"
+    android:gravity="center_horizontal"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <Space
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <ImageView
+        android:layout_width="150dp"
+        android:layout_height="150dp"
+        android:contentDescription="커피잔 이미지"
+        android:scaleType="fitCenter"
+        android:src="@drawable/coffee_cup" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:fontFamily="@font/nanum_myeongjo_extra_bold"
+        android:text="음성 주문 키오스크"
+        android:textColor="#000000"
+        android:textSize="27sp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:fontFamily="@font/nanum_myeongjo"
+        android:text="말로 주문하는 쉬운 키오스크"
+        android:textColor="#808080"
+        android:textSize="13sp" />
+
+    <Space
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="0.4" />
+
+    <LinearLayout
+        android:id="@+id/btn_start_order"
+        android:layout_width="match_parent"
+        android:layout_height="150dp"
+        android:background="@drawable/bg_start_cta"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:paddingHorizontal="8dp"
+        android:paddingVertical="12dp">
+
+        <ImageView
+            android:layout_width="100dp"
+            android:layout_height="100dp"
+            android:contentDescription="음성 주문"
+            android:scaleType="fitCenter"
+            android:src="@drawable/voice_order_icon" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="@font/nanum_myeongjo_bold"
+            android:gravity="center"
+            android:lineSpacingExtra="4dp"
+            android:text="음성으로\n주문하기"
+            android:textColor="#FFFFFF"
+            android:textSize="23sp" />
+    </LinearLayout>
+
+    <Space
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_start_hint"
+        android:fontFamily="@font/nanum_myeongjo_bold"
+        android:gravity="center"
+        android:padding="8dp"
+        android:text="버튼을 누르고 말씀해주세요."
+        android:textColor="#424242"
+        android:textSize="14sp" />
+</LinearLayout>

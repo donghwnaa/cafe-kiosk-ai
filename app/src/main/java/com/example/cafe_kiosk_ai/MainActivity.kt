@@ -1,100 +1,90 @@
 package com.example.cafe_kiosk_ai
 
 import android.os.Bundle
-import android.view.Gravity
+import android.text.Spannable
+import android.text.SpannableString
+import android.text.style.ForegroundColorSpan
 import android.view.View
 import android.widget.FrameLayout
-import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.ui.platform.ComposeView
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import com.example.cafe_kiosk_ai.screens.JuhyukReviewScreen
-import com.example.cafe_kiosk_ai.screens.StartScreen
-import com.example.cafe_kiosk_ai.ui.page4.OrderConfirmScreen
-import com.example.cafe_kiosk_ai.ui.page4.Page4CartItem
-import com.example.cafe_kiosk_ai.ui.page4.Page4ChatMessage
-import com.example.cafe_kiosk_ai.ui.page4.Page4VoiceState
 
-/** UI-only screen host. Each branch's design is mounted here without API or order processing. */
+/** XML 화면을 교체해 표시하는 UI 전용 호스트. 통신과 주문 처리는 연결하지 않습니다. */
 class MainActivity : AppCompatActivity() {
-    private lateinit var container: FrameLayout
-    private lateinit var navigation: LinearLayout
-    private val screenTitles = listOf("시작", "대화", "상품 확인", "주문 확인", "결제 완료")
+    private lateinit var screenContainer: FrameLayout
+    private val navigationIds = listOf(
+        R.id.nav_start,
+        R.id.nav_conversation,
+        R.id.nav_product,
+        R.id.nav_order,
+        R.id.nav_payment,
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContentView(R.layout.activity_main)
-        container = findViewById(R.id.screen_container)
-        navigation = findViewById(R.id.screen_navigation)
+        screenContainer = findViewById(R.id.screen_container)
+
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { view, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             view.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
             insets
         }
-        buildNavigation()
+
+        navigationIds.forEachIndexed { index, id ->
+            findViewById<View>(id).setOnClickListener { showScreen(index) }
+        }
         showScreen(0)
     }
 
-    private fun buildNavigation() {
-        screenTitles.forEachIndexed { index, title ->
-            val tab = TextView(this).apply {
-                text = title
-                textSize = 14f
-                gravity = Gravity.CENTER
-                setPadding(16, 0, 16, 0)
-                setOnClickListener { showScreen(index) }
-            }
-            navigation.addView(tab, LinearLayout.LayoutParams(-2, -1))
-        }
-    }
-
     private fun showScreen(index: Int) {
-        for (i in 0 until navigation.childCount) {
-            (navigation.getChildAt(i) as TextView).apply {
-                setTextColor(if (i == index) 0xFF514BCB.toInt() else 0xFF424242.toInt())
-                setBackgroundColor(if (i == index) 0xFFE7E5FF.toInt() else 0xFFF6F2F2.toInt())
+        navigationIds.forEachIndexed { navIndex, id ->
+            findViewById<TextView>(id).apply {
+                setTextColor(if (navIndex == index) 0xFF514BCB.toInt() else 0xFF424242.toInt())
+                setBackgroundResource(if (navIndex == index) R.drawable.bg_nav_selected else android.R.color.transparent)
             }
         }
-        container.removeAllViews()
+
+        val layout = when (index) {
+            0 -> R.layout.screen_start
+            1 -> R.layout.conversation_ui
+            2 -> R.layout.screen_product_confirm
+            3 -> R.layout.screen_order_confirm
+            else -> R.layout.activity_payment_complete
+        }
+        screenContainer.removeAllViews()
+        val screen = layoutInflater.inflate(layout, screenContainer, false)
+        screenContainer.addView(screen)
+
         when (index) {
-            0 -> showCompose { StartScreen(onStartClick = { showScreen(1) }) }
-            1 -> {
-                val view = layoutInflater.inflate(R.layout.conversation_ui, container, false)
-                view.findViewById<View>(R.id.home_icon)?.setOnClickListener { showScreen(0) }
-                container.addView(view)
+            0 -> screen.findViewById<View>(R.id.btn_start_order).setOnClickListener { showScreen(1) }
+            1 -> screen.findViewById<View>(R.id.home_icon).setOnClickListener { showScreen(0) }
+            2 -> {
+                screen.findViewById<View>(R.id.product_home).setOnClickListener { showScreen(0) }
+                screen.findViewById<View>(R.id.btn_product_confirm).setOnClickListener { showScreen(3) }
             }
-            2 -> showCompose {
-                JuhyukReviewScreen(onConfirm = { showScreen(3) }, onHome = { showScreen(0) })
-            }
-            3 -> showCompose {
-                OrderConfirmScreen(
-                    items = listOf(Page4CartItem("아메리카노", "ICE", 4500, 2, R.drawable.page4_americano, "R")),
-                    messages = listOf(Page4ChatMessage("총 결제 금액 : 9,000원입니다.\n확인 부탁드려요", false, "9,000")),
-                    voiceState = Page4VoiceState.IDLE,
-                    onMicClick = {},
-                    onPayClick = { showScreen(4) },
-                    onHomeClick = { showScreen(0) },
+            3 -> {
+                screen.findViewById<View>(R.id.order_home).setOnClickListener { showScreen(0) }
+                screen.findViewById<View>(R.id.btn_order_pay).setOnClickListener { showScreen(4) }
+                val totalMessage = SpannableString("총 결제 금액 : 9,000원입니다.\n확인 부탁드려요")
+                val amountStart = totalMessage.indexOf("9,000")
+                totalMessage.setSpan(
+                    ForegroundColorSpan(0xFFFF0C0C.toInt()),
+                    amountStart,
+                    amountStart + "9,000".length,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE,
                 )
+                screen.findViewById<TextView>(R.id.order_total_message).text = totalMessage
             }
             else -> {
-                val view = layoutInflater.inflate(R.layout.activity_payment_complete, container, false)
-                view.findViewById<TextView>(R.id.tvOrderNumber)?.text = "주문번호 001"
-                view.findViewById<View>(R.id.btnHome)?.setOnClickListener { showScreen(0) }
-                view.findViewById<View>(R.id.btnReset)?.setOnClickListener { showScreen(0) }
-                container.addView(view)
+                screen.findViewById<TextView>(R.id.tvOrderNumber).text = "주문번호 001"
+                screen.findViewById<View>(R.id.btnHome).setOnClickListener { showScreen(0) }
+                screen.findViewById<View>(R.id.btnReset).setOnClickListener { showScreen(0) }
             }
         }
-    }
-
-    private fun showCompose(content: @androidx.compose.runtime.Composable () -> Unit) {
-        val composeView = ComposeView(this).apply {
-            setContent { MaterialTheme { content() } }
-        }
-        container.addView(composeView, FrameLayout.LayoutParams(-1, -1))
     }
 }

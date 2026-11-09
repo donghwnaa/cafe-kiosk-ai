@@ -15,14 +15,39 @@
     <HorizontalScrollView
         android:layout_width="match_parent"
         android:layout_height="48dp"
-        android:fillViewport="true"
+        android:fillViewport="false"
         android:scrollbars="none">
 
         <LinearLayout
-            android:id="@+id/screen_navigation"
             android:layout_width="wrap_content"
             android:layout_height="match_parent"
             android:background="#F6F2F2"
-            android:orientation="horizontal" />
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/nav_start"
+                style="@style/KioskNavigationItem"
+                android:text="시작" />
+
+            <TextView
+                android:id="@+id/nav_conversation"
+                style="@style/KioskNavigationItem"
+                android:text="대화" />
+
+            <TextView
+                android:id="@+id/nav_product"
+                style="@style/KioskNavigationItem"
+                android:text="상품 확인" />
+
+            <TextView
+                android:id="@+id/nav_order"
+                style="@style/KioskNavigationItem"
+                android:text="주문 확인" />
+
+            <TextView
+                android:id="@+id/nav_payment"
+                style="@style/KioskNavigationItem"
+                android:text="결제 완료" />
+        </LinearLayout>
     </HorizontalScrollView>
 </LinearLayout>

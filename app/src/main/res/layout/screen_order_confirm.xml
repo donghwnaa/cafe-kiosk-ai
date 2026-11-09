@@ -1,0 +1,231 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/order_confirm_screen"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FFFFFF"
+    android:orientation="vertical"
+    android:paddingBottom="16dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="64dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="11dp">
+
+        <ImageView
+            android:layout_width="54dp"
+            android:layout_height="54dp"
+            android:contentDescription="커피"
+            android:scaleType="fitCenter"
+            android:src="@drawable/page4_logo_cup" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:paddingStart="8dp"
+            android:text="음성 주문 키오스크"
+            android:textColor="#000000"
+            android:textSize="15sp" />
+
+        <ImageView
+            android:id="@+id/order_home"
+            android:layout_width="54dp"
+            android:layout_height="54dp"
+            android:clickable="true"
+            android:contentDescription="처음으로"
+            android:focusable="true"
+            android:padding="4dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/page4_home" />
+    </LinearLayout>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="8dp"
+        android:fontFamily="serif"
+        android:text="주문 내용을 확인해주세요"
+        android:textColor="#000000"
+        android:textSize="28sp"
+        android:textStyle="bold" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="112dp"
+        android:layout_marginStart="27dp"
+        android:layout_marginTop="18dp"
+        android:layout_marginEnd="27dp"
+        android:background="@drawable/bg_cart_card"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="6dp"
+        android:paddingEnd="14dp">
+
+        <ImageView
+            android:layout_width="71dp"
+            android:layout_height="71dp"
+            android:contentDescription="아메리카노"
+            android:scaleType="centerCrop"
+            android:src="@drawable/page4_americano" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="serif"
+                android:text="아메리카노"
+                android:textColor="#000000"
+                android:textSize="19sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="serif"
+                android:text="ICE · 보통 크기"
+                android:textColor="#B8A0A0"
+                android:textSize="19sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="serif"
+                android:text="4,500원    x2"
+                android:textColor="#000000"
+                android:textSize="19sp" />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="serif"
+            android:text="9,000원"
+            android:textColor="#000000"
+            android:textSize="19sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="141dp"
+        android:layout_marginStart="23dp"
+        android:layout_marginTop="24dp"
+        android:layout_marginEnd="23dp"
+        android:background="@drawable/bg_chat_outer"
+        android:paddingHorizontal="10dp"
+        android:paddingVertical="6dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@drawable/bg_chat_inner"
+            android:gravity="top"
+            android:orientation="horizontal"
+            android:paddingHorizontal="6dp"
+            android:paddingVertical="8dp">
+
+            <ImageView
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:contentDescription="AI"
+                android:src="@drawable/page4_robot" />
+
+            <TextView
+                android:id="@+id/order_total_message"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/bg_ai_bubble"
+                android:fontFamily="serif"
+                android:lineSpacingExtra="2dp"
+                android:paddingHorizontal="12dp"
+                android:paddingVertical="4dp"
+                android:text="총 결제 금액 : 9,000원입니다.\n확인 부탁드려요"
+                android:textColor="#000000"
+                android:textSize="17sp" />
+        </LinearLayout>
+    </FrameLayout>
+
+    <Space
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <FrameLayout
+        android:layout_width="122dp"
+        android:layout_height="126dp"
+        android:layout_gravity="center_horizontal">
+
+        <View
+            android:layout_width="122dp"
+            android:layout_height="122dp"
+            android:layout_gravity="top|center_horizontal"
+            android:layout_marginTop="4dp"
+            android:background="@drawable/bg_mic_circle" />
+
+        <ImageView
+            android:layout_width="94dp"
+            android:layout_height="94dp"
+            android:layout_gravity="top|center_horizontal"
+            android:contentDescription="말하기 안내"
+            android:scaleType="fitCenter"
+            android:src="@drawable/page4_speak" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|center_horizontal"
+            android:fontFamily="serif"
+            android:paddingBottom="14dp"
+            android:text="말하기"
+            android:textColor="#FFFFFF"
+            android:textSize="28sp" />
+    </FrameLayout>
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="6dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <View
+            android:layout_width="11dp"
+            android:layout_height="11dp"
+            android:background="@drawable/bg_status_idle" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="버튼을 누르고 말씀해 주세요"
+            android:textColor="#000000"
+            android:textSize="17sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/btn_order_pay"
+        android:layout_width="match_parent"
+        android:layout_height="77dp"
+        android:layout_marginHorizontal="23dp"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/bg_primary_cta"
+        android:clickable="true"
+        android:focusable="true"
+        android:fontFamily="serif"
+        android:gravity="center"
+        android:text="“계산할게요”"
+        android:textColor="#FFFFFF"
+        android:textSize="30sp" />
+</LinearLayout>
