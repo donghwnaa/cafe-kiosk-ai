@@ -35,16 +35,6 @@
                 android:text="대화" />
 
             <TextView
-                android:id="@+id/nav_product"
-                style="@style/KioskNavigationItem"
-                android:text="상품 확인" />
-
-            <TextView
-                android:id="@+id/nav_order"
-                style="@style/KioskNavigationItem"
-                android:text="주문 확인" />
-
-            <TextView
                 android:id="@+id/nav_payment"
                 style="@style/KioskNavigationItem"
                 android:text="결제 완료" />

@@ -44,6 +44,10 @@ dependencies {
     implementation(libs.material)
     implementation(libs.androidx.activity)
     implementation(libs.androidx.constraintlayout)
+    implementation("com.google.code.gson:gson:2.11.0") {
+        // Gson's Error Prone annotations are for static analysis only.
+        exclude(group = "com.google.errorprone", module = "error_prone_annotations")
+    }
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

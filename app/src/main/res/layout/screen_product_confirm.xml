@@ -63,6 +63,7 @@
                 android:src="@drawable/ai_profile" />
 
             <TextView
+                android:id="@+id/product_prompt"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="10dp"
@@ -84,32 +85,16 @@
             android:orientation="vertical"
             android:padding="12dp">
 
-            <ImageView
+            <ScrollView
                 android:layout_width="match_parent"
-                android:layout_height="170dp"
-                android:background="#FFFFFF"
-                android:contentDescription="아메리카노 이미지"
-                android:scaleType="fitCenter"
-                android:src="@drawable/americano" />
+                android:layout_height="match_parent">
 
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:gravity="center"
-                android:text="아메리카노"
-                android:textColor="#000000"
-                android:textSize="22sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:lineSpacingExtra="3dp"
-                android:text="온도 : ICE(차가움)\n크기 : R(보통 크기)\n수량 : 2"
-                android:textColor="#000000"
-                android:textSize="18sp" />
+                <LinearLayout
+                    android:id="@+id/product_items"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+            </ScrollView>
         </LinearLayout>
     </LinearLayout>
 
@@ -118,6 +103,7 @@
         android:layout_height="10dp" />
 
     <FrameLayout
+        android:id="@+id/voice_artwork"
         android:layout_width="118dp"
         android:layout_height="118dp"
         android:background="@drawable/bg_mic_circle">
@@ -147,7 +133,7 @@
         android:layout_height="wrap_content"
         android:fontFamily="serif"
         android:padding="6dp"
-        android:text="🟢 듣는 중..."
+        android:text="주문 내용을 확인해 주세요"
         android:textColor="#151515"
         android:textSize="16sp"
         android:textStyle="bold" />
@@ -165,4 +151,10 @@
         android:text="“맞아요”"
         android:textColor="#FFFFFF"
         android:textSize="24sp" />
+
+    <FrameLayout
+        android:id="@+id/test_input_slot"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:visibility="gone" />
 </LinearLayout>
