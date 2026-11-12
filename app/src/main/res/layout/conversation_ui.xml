@@ -1,8 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-    Conversation UI only. The home and microphone areas are intentionally decorative.
-    Replace each menu ImageView's android:src when the real menu images are available.
--->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
@@ -23,685 +19,681 @@
         android:paddingEnd="18dp"
         android:paddingBottom="14dp">
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="42dp"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="42dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-        <!-- Replace android:src with the coffee logo drawable. -->
-        <ImageView
-            android:layout_width="58dp"
-            android:layout_height="match_parent"
-            android:contentDescription="커피잔"
-            android:padding="3dp"
-            android:scaleType="centerInside"
-            android:src="@drawable/tea" />
+            <ImageView
+                android:layout_width="58dp"
+                android:layout_height="match_parent"
+                android:contentDescription="커피잔"
+                android:padding="3dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/tea" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:fontFamily="serif"
+                android:includeFontPadding="false"
+                android:text="음성 주문 키오스크"
+                android:textColor="#171313"
+                android:textSize="16sp" />
+
+            <ImageView
+                android:id="@+id/home_icon"
+                android:layout_width="48dp"
+                android:layout_height="42dp"
+                android:contentDescription="홈"
+                android:padding="3dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/home" />
+        </LinearLayout>
 
         <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
+            android:layout_width="match_parent"
+            android:layout_height="50dp"
+            android:layout_marginStart="46dp"
+            android:gravity="center_vertical"
             android:fontFamily="serif"
             android:includeFontPadding="false"
-            android:text="음성 주문 키오스크"
-            android:textColor="#171313"
-            android:textSize="16sp" />
-
-        <!-- Replace android:src with the home drawable. -->
-        <ImageView
-            android:id="@+id/home_icon"
-            android:layout_width="48dp"
-            android:layout_height="42dp"
-            android:contentDescription="홈"
-            android:padding="3dp"
-            android:scaleType="centerInside"
-            android:src="@drawable/home" />
-    </LinearLayout>
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="50dp"
-        android:layout_marginStart="46dp"
-        android:gravity="center_vertical"
-        android:fontFamily="serif"
-        android:includeFontPadding="false"
-        android:text="무엇을 주문하시겠어요?"
-        android:textColor="#070404"
-        android:textSize="27sp"
-        android:textStyle="bold" />
-
-    <com.google.android.material.card.MaterialCardView
-        android:layout_width="match_parent"
-        android:layout_height="238dp"
-        android:layout_marginStart="8dp"
-        android:layout_marginTop="4dp"
-        android:layout_marginEnd="8dp"
-        app:cardBackgroundColor="#F6F2F2"
-        app:cardCornerRadius="12dp"
-        app:cardElevation="0dp"
-        app:cardUseCompatPadding="false">
+            android:text="무엇을 주문하시겠어요?"
+            android:textColor="#070404"
+            android:textSize="27sp"
+            android:textStyle="bold" />
 
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:layout_margin="8dp"
-            app:cardBackgroundColor="#FFFFFF"
-            app:cardCornerRadius="9dp"
+            android:layout_height="238dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="4dp"
+            android:layout_marginEnd="8dp"
+            app:cardBackgroundColor="#F6F2F2"
+            app:cardCornerRadius="12dp"
             app:cardElevation="0dp"
             app:cardUseCompatPadding="false">
 
-            <LinearLayout
+            <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:orientation="vertical"
-                android:paddingTop="8dp"
-                android:paddingBottom="8dp">
+                android:layout_margin="8dp"
+                app:cardBackgroundColor="#FFFFFF"
+                app:cardCornerRadius="9dp"
+                app:cardElevation="0dp"
+                app:cardUseCompatPadding="false">
 
                 <LinearLayout
                     android:layout_width="match_parent"
-                    android:layout_height="42dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal"
-                    android:paddingStart="6dp"
-                    android:paddingEnd="8dp">
+                    android:layout_height="match_parent"
+                    android:orientation="vertical"
+                    android:paddingTop="8dp"
+                    android:paddingBottom="8dp">
 
-                    <ImageView
-                        android:id="@+id/ai_profile_image"
-                        android:layout_width="34dp"
-                        android:layout_height="34dp"
-                        android:contentDescription="AI 로봇 프로필"
-                        android:scaleType="fitCenter"
-                        android:src="@drawable/ai_profile" />
-
-                    <com.google.android.material.card.MaterialCardView
-                        android:layout_width="0dp"
-                        android:layout_height="34dp"
-                        android:layout_marginStart="10dp"
-                        android:layout_weight="1"
-                        app:cardBackgroundColor="#F8E8E8"
-                        app:cardCornerRadius="16dp"
-                        app:cardElevation="0dp">
-
-                        <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="match_parent"
-                            android:ellipsize="end"
-                            android:fontFamily="serif"
-                            android:gravity="center_vertical"
-                            android:includeFontPadding="false"
-                            android:maxLines="1"
-                            android:paddingStart="16dp"
-                            android:paddingEnd="12dp"
-                            android:text="무엇을 주문하시고 싶으신가요?"
-                            android:textColor="#2D2626"
-                            android:textSize="17sp" />
-                    </com.google.android.material.card.MaterialCardView>
-                </LinearLayout>
-
-                <ScrollView
-                    android:id="@+id/menu_scroll_view"
-                    android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_marginTop="6dp"
-                    android:layout_weight="1"
-                    android:clipToPadding="false"
-                    android:fadeScrollbars="false"
-                    android:fillViewport="false"
-                    android:overScrollMode="ifContentScrolls"
-                    android:paddingStart="42dp"
-                    android:paddingEnd="10dp"
-                    android:scrollbarStyle="outsideOverlay"
-                    android:scrollbars="vertical">
-
-                    <!-- Cards stay 138dp tall even when more menus are added. -->
-                    <GridLayout
+                    <LinearLayout
                         android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:columnCount="2"
+                        android:layout_height="42dp"
+                        android:gravity="center_vertical"
                         android:orientation="horizontal"
-                        android:paddingBottom="8dp"
-                        android:useDefaultMargins="false">
+                        android:paddingStart="6dp"
+                        android:paddingEnd="8dp">
+
+                        <ImageView
+                            android:id="@+id/ai_profile_image"
+                            android:layout_width="34dp"
+                            android:layout_height="34dp"
+                            android:contentDescription="AI 로봇 프로필"
+                            android:scaleType="fitCenter"
+                            android:src="@drawable/ai_profile" />
 
                         <com.google.android.material.card.MaterialCardView
                             android:layout_width="0dp"
-                            android:layout_height="138dp"
-                            android:layout_columnWeight="1"
-                            android:layout_margin="4dp"
+                            android:layout_height="34dp"
+                            android:layout_marginStart="10dp"
+                            android:layout_weight="1"
                             app:cardBackgroundColor="#F8E8E8"
-                            app:cardCornerRadius="10dp"
+                            app:cardCornerRadius="16dp"
                             app:cardElevation="0dp">
 
-                            <LinearLayout
+                            <TextView
                                 android:layout_width="match_parent"
                                 android:layout_height="match_parent"
-                                android:gravity="center_horizontal"
-                                android:orientation="vertical"
-                                android:padding="8dp">
-
-                                <ImageView
-                                    android:layout_width="match_parent"
-                                    android:layout_height="74dp"
-                                    android:background="#FFFFFF"
-                                    android:contentDescription="아메리카노 임시 이미지"
-                                    android:padding="17dp"
-                                    android:scaleType="centerCrop"
-                                    android:src="@drawable/americano"
-                                    />
-
-                                <TextView
-                                    android:layout_width="match_parent"
-                                    android:layout_height="25dp"
-                                    android:fontFamily="serif"
-                                    android:gravity="center"
-                                    android:includeFontPadding="false"
-                                    android:maxLines="1"
-                                    android:text="아메리카노"
-                                    android:textColor="#130D0D"
-                                    android:textSize="15sp"
-                                    android:textStyle="bold" />
-
-                                <TextView
-                                    android:layout_width="match_parent"
-                                    android:layout_height="23dp"
-                                    android:fontFamily="serif"
-                                    android:gravity="center"
-                                    android:includeFontPadding="false"
-                                    android:text="3,000원"
-                                    android:textColor="#171111"
-                                    android:textSize="17sp" />
-                            </LinearLayout>
+                                android:ellipsize="end"
+                                android:fontFamily="serif"
+                                android:gravity="center_vertical"
+                                android:includeFontPadding="false"
+                                android:maxLines="1"
+                                android:paddingStart="16dp"
+                                android:paddingEnd="12dp"
+                                android:text="무엇을 주문하시고 싶으신가요?"
+                                android:textColor="#2D2626"
+                                android:textSize="17sp" />
                         </com.google.android.material.card.MaterialCardView>
+                    </LinearLayout>
 
-                        <com.google.android.material.card.MaterialCardView
-                            android:layout_width="0dp"
-                            android:layout_height="138dp"
-                            android:layout_columnWeight="1"
-                            android:layout_margin="4dp"
-                            app:cardBackgroundColor="#F8E8E8"
-                            app:cardCornerRadius="10dp"
-                            app:cardElevation="0dp">
+                    <ScrollView
+                        android:id="@+id/menu_scroll_view"
+                        android:layout_width="match_parent"
+                        android:layout_height="0dp"
+                        android:layout_marginTop="6dp"
+                        android:layout_weight="1"
+                        android:clipToPadding="false"
+                        android:fadeScrollbars="false"
+                        android:fillViewport="false"
+                        android:overScrollMode="ifContentScrolls"
+                        android:paddingStart="42dp"
+                        android:paddingEnd="10dp"
+                        android:scrollbarStyle="outsideOverlay"
+                        android:scrollbars="vertical">
 
-                            <LinearLayout
-                                android:layout_width="match_parent"
-                                android:layout_height="match_parent"
-                                android:gravity="center_horizontal"
-                                android:orientation="vertical"
-                                android:padding="8dp">
+                        <GridLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:columnCount="2"
+                            android:orientation="horizontal"
+                            android:paddingBottom="8dp"
+                            android:useDefaultMargins="false">
 
-                                <ImageView
+                            <com.google.android.material.card.MaterialCardView
+                                android:layout_width="0dp"
+                                android:layout_height="138dp"
+                                android:layout_columnWeight="1"
+                                android:layout_margin="4dp"
+                                app:cardBackgroundColor="#F8E8E8"
+                                app:cardCornerRadius="10dp"
+                                app:cardElevation="0dp">
+
+                                <LinearLayout
                                     android:layout_width="match_parent"
-                                    android:layout_height="74dp"
-                                    android:background="#FFFFFF"
-                                    android:contentDescription="유자차 임시 이미지"
-                                    android:padding="17dp"
-                                    android:scaleType="centerCrop"
-                                    android:src="@drawable/uzatea" />
+                                    android:layout_height="match_parent"
+                                    android:gravity="center_horizontal"
+                                    android:orientation="vertical"
+                                    android:padding="8dp">
 
-                                <TextView
+                                    <ImageView
+                                        android:layout_width="match_parent"
+                                        android:layout_height="74dp"
+                                        android:background="#FFFFFF"
+                                        android:contentDescription="아메리카노 임시 이미지"
+                                        android:padding="17dp"
+                                        android:scaleType="centerCrop"
+                                        android:src="@drawable/americano" />
+
+                                    <TextView
+                                        android:layout_width="match_parent"
+                                        android:layout_height="25dp"
+                                        android:fontFamily="serif"
+                                        android:gravity="center"
+                                        android:includeFontPadding="false"
+                                        android:maxLines="1"
+                                        android:text="아메리카노"
+                                        android:textColor="#130D0D"
+                                        android:textSize="15sp"
+                                        android:textStyle="bold" />
+
+                                    <TextView
+                                        android:layout_width="match_parent"
+                                        android:layout_height="23dp"
+                                        android:fontFamily="serif"
+                                        android:gravity="center"
+                                        android:includeFontPadding="false"
+                                        android:text="3,000원"
+                                        android:textColor="#171111"
+                                        android:textSize="17sp" />
+                                </LinearLayout>
+                            </com.google.android.material.card.MaterialCardView>
+
+                            <com.google.android.material.card.MaterialCardView
+                                android:layout_width="0dp"
+                                android:layout_height="138dp"
+                                android:layout_columnWeight="1"
+                                android:layout_margin="4dp"
+                                app:cardBackgroundColor="#F8E8E8"
+                                app:cardCornerRadius="10dp"
+                                app:cardElevation="0dp">
+
+                                <LinearLayout
                                     android:layout_width="match_parent"
-                                    android:layout_height="25dp"
-                                    android:fontFamily="serif"
-                                    android:gravity="center"
-                                    android:includeFontPadding="false"
-                                    android:maxLines="1"
-                                    android:text="유자차"
-                                    android:textColor="#130D0D"
-                                    android:textSize="15sp"
-                                    android:textStyle="bold" />
+                                    android:layout_height="match_parent"
+                                    android:gravity="center_horizontal"
+                                    android:orientation="vertical"
+                                    android:padding="8dp">
 
-                                <TextView
+                                    <ImageView
+                                        android:layout_width="match_parent"
+                                        android:layout_height="74dp"
+                                        android:background="#FFFFFF"
+                                        android:contentDescription="유자차 임시 이미지"
+                                        android:padding="17dp"
+                                        android:scaleType="centerCrop"
+                                        android:src="@drawable/uzatea" />
+
+                                    <TextView
+                                        android:layout_width="match_parent"
+                                        android:layout_height="25dp"
+                                        android:fontFamily="serif"
+                                        android:gravity="center"
+                                        android:includeFontPadding="false"
+                                        android:maxLines="1"
+                                        android:text="유자차"
+                                        android:textColor="#130D0D"
+                                        android:textSize="15sp"
+                                        android:textStyle="bold" />
+
+                                    <TextView
+                                        android:layout_width="match_parent"
+                                        android:layout_height="23dp"
+                                        android:fontFamily="serif"
+                                        android:gravity="center"
+                                        android:includeFontPadding="false"
+                                        android:text="4,000원"
+                                        android:textColor="#171111"
+                                        android:textSize="17sp" />
+                                </LinearLayout>
+                            </com.google.android.material.card.MaterialCardView>
+
+                            <com.google.android.material.card.MaterialCardView
+                                android:layout_width="0dp"
+                                android:layout_height="138dp"
+                                android:layout_columnWeight="1"
+                                android:layout_margin="4dp"
+                                app:cardBackgroundColor="#F8E8E8"
+                                app:cardCornerRadius="10dp"
+                                app:cardElevation="0dp">
+
+                                <LinearLayout
                                     android:layout_width="match_parent"
-                                    android:layout_height="23dp"
-                                    android:fontFamily="serif"
-                                    android:gravity="center"
-                                    android:includeFontPadding="false"
-                                    android:text="4,000원"
-                                    android:textColor="#171111"
-                                    android:textSize="17sp" />
-                            </LinearLayout>
-                        </com.google.android.material.card.MaterialCardView>
+                                    android:layout_height="match_parent"
+                                    android:gravity="center_horizontal"
+                                    android:orientation="vertical"
+                                    android:padding="8dp">
 
-                        <com.google.android.material.card.MaterialCardView
-                            android:layout_width="0dp"
-                            android:layout_height="138dp"
-                            android:layout_columnWeight="1"
-                            android:layout_margin="4dp"
-                            app:cardBackgroundColor="#F8E8E8"
-                            app:cardCornerRadius="10dp"
-                            app:cardElevation="0dp">
+                                    <ImageView
+                                        android:layout_width="match_parent"
+                                        android:layout_height="74dp"
+                                        android:background="#FFFFFF"
+                                        android:contentDescription="카페라떼 임시 이미지"
+                                        android:padding="17dp"
+                                        android:scaleType="centerCrop"
+                                        android:src="@drawable/cafelatte" />
 
-                            <LinearLayout
-                                android:layout_width="match_parent"
-                                android:layout_height="match_parent"
-                                android:gravity="center_horizontal"
-                                android:orientation="vertical"
-                                android:padding="8dp">
+                                    <TextView
+                                        android:layout_width="match_parent"
+                                        android:layout_height="25dp"
+                                        android:fontFamily="serif"
+                                        android:gravity="center"
+                                        android:includeFontPadding="false"
+                                        android:maxLines="1"
+                                        android:text="카페라떼"
+                                        android:textColor="#130D0D"
+                                        android:textSize="15sp"
+                                        android:textStyle="bold" />
 
-                                <ImageView
+                                    <TextView
+                                        android:layout_width="match_parent"
+                                        android:layout_height="23dp"
+                                        android:fontFamily="serif"
+                                        android:gravity="center"
+                                        android:includeFontPadding="false"
+                                        android:text="4,000원"
+                                        android:textColor="#171111"
+                                        android:textSize="17sp" />
+                                </LinearLayout>
+                            </com.google.android.material.card.MaterialCardView>
+
+                            <com.google.android.material.card.MaterialCardView
+                                android:layout_width="0dp"
+                                android:layout_height="138dp"
+                                android:layout_columnWeight="1"
+                                android:layout_margin="4dp"
+                                app:cardBackgroundColor="#F8E8E8"
+                                app:cardCornerRadius="10dp"
+                                app:cardElevation="0dp">
+
+                                <LinearLayout
                                     android:layout_width="match_parent"
-                                    android:layout_height="74dp"
-                                    android:background="#FFFFFF"
-                                    android:contentDescription="카페라떼 임시 이미지"
-                                    android:padding="17dp"
-                                    android:scaleType="centerCrop"
-                                    android:src="@drawable/cafelatte" />
+                                    android:layout_height="match_parent"
+                                    android:gravity="center_horizontal"
+                                    android:orientation="vertical"
+                                    android:padding="8dp">
 
-                                <TextView
+                                    <ImageView
+                                        android:layout_width="match_parent"
+                                        android:layout_height="74dp"
+                                        android:background="#FFFFFF"
+                                        android:contentDescription="카푸치노 임시 이미지"
+                                        android:padding="17dp"
+                                        android:scaleType="centerCrop"
+                                        android:src="@drawable/cappuccino" />
+
+                                    <TextView
+                                        android:layout_width="match_parent"
+                                        android:layout_height="25dp"
+                                        android:fontFamily="serif"
+                                        android:gravity="center"
+                                        android:includeFontPadding="false"
+                                        android:maxLines="1"
+                                        android:text="카푸치노"
+                                        android:textColor="#130D0D"
+                                        android:textSize="15sp"
+                                        android:textStyle="bold" />
+
+                                    <TextView
+                                        android:layout_width="match_parent"
+                                        android:layout_height="23dp"
+                                        android:fontFamily="serif"
+                                        android:gravity="center"
+                                        android:includeFontPadding="false"
+                                        android:text="4,000원"
+                                        android:textColor="#171111"
+                                        android:textSize="17sp" />
+                                </LinearLayout>
+                            </com.google.android.material.card.MaterialCardView>
+
+                            <com.google.android.material.card.MaterialCardView
+                                android:layout_width="0dp"
+                                android:layout_height="138dp"
+                                android:layout_columnWeight="1"
+                                android:layout_margin="4dp"
+                                app:cardBackgroundColor="#F8E8E8"
+                                app:cardCornerRadius="10dp"
+                                app:cardElevation="0dp">
+
+                                <LinearLayout
                                     android:layout_width="match_parent"
-                                    android:layout_height="25dp"
-                                    android:fontFamily="serif"
-                                    android:gravity="center"
-                                    android:includeFontPadding="false"
-                                    android:maxLines="1"
-                                    android:text="카페라떼"
-                                    android:textColor="#130D0D"
-                                    android:textSize="15sp"
-                                    android:textStyle="bold" />
+                                    android:layout_height="match_parent"
+                                    android:gravity="center_horizontal"
+                                    android:orientation="vertical"
+                                    android:padding="8dp">
 
-                                <TextView
+                                    <ImageView
+                                        android:layout_width="match_parent"
+                                        android:layout_height="74dp"
+                                        android:background="#FFFFFF"
+                                        android:contentDescription="바닐라라떼 임시 이미지"
+                                        android:padding="17dp"
+                                        android:scaleType="centerCrop"
+                                        android:src="@drawable/vanillalatte" />
+
+                                    <TextView
+                                        android:layout_width="match_parent"
+                                        android:layout_height="25dp"
+                                        android:fontFamily="serif"
+                                        android:gravity="center"
+                                        android:includeFontPadding="false"
+                                        android:maxLines="1"
+                                        android:text="바닐라라떼"
+                                        android:textColor="#130D0D"
+                                        android:textSize="15sp"
+                                        android:textStyle="bold" />
+
+                                    <TextView
+                                        android:layout_width="match_parent"
+                                        android:layout_height="23dp"
+                                        android:fontFamily="serif"
+                                        android:gravity="center"
+                                        android:includeFontPadding="false"
+                                        android:text="4,500원"
+                                        android:textColor="#171111"
+                                        android:textSize="17sp" />
+                                </LinearLayout>
+                            </com.google.android.material.card.MaterialCardView>
+
+                            <com.google.android.material.card.MaterialCardView
+                                android:layout_width="0dp"
+                                android:layout_height="138dp"
+                                android:layout_columnWeight="1"
+                                android:layout_margin="4dp"
+                                app:cardBackgroundColor="#F8E8E8"
+                                app:cardCornerRadius="10dp"
+                                app:cardElevation="0dp">
+
+                                <LinearLayout
                                     android:layout_width="match_parent"
-                                    android:layout_height="23dp"
-                                    android:fontFamily="serif"
-                                    android:gravity="center"
-                                    android:includeFontPadding="false"
-                                    android:text="4,000원"
-                                    android:textColor="#171111"
-                                    android:textSize="17sp" />
-                            </LinearLayout>
-                        </com.google.android.material.card.MaterialCardView>
+                                    android:layout_height="match_parent"
+                                    android:gravity="center_horizontal"
+                                    android:orientation="vertical"
+                                    android:padding="8dp">
 
-                        <com.google.android.material.card.MaterialCardView
-                            android:layout_width="0dp"
-                            android:layout_height="138dp"
-                            android:layout_columnWeight="1"
-                            android:layout_margin="4dp"
-                            app:cardBackgroundColor="#F8E8E8"
-                            app:cardCornerRadius="10dp"
-                            app:cardElevation="0dp">
+                                    <ImageView
+                                        android:layout_width="match_parent"
+                                        android:layout_height="74dp"
+                                        android:background="#FFFFFF"
+                                        android:contentDescription="카라멜마키아토 임시 이미지"
+                                        android:padding="17dp"
+                                        android:scaleType="centerCrop"
+                                        android:src="@drawable/cafemocha" />
 
-                            <LinearLayout
-                                android:layout_width="match_parent"
-                                android:layout_height="match_parent"
-                                android:gravity="center_horizontal"
-                                android:orientation="vertical"
-                                android:padding="8dp">
+                                    <TextView
+                                        android:layout_width="match_parent"
+                                        android:layout_height="25dp"
+                                        android:ellipsize="end"
+                                        android:fontFamily="serif"
+                                        android:gravity="center"
+                                        android:includeFontPadding="false"
+                                        android:maxLines="1"
+                                        android:text="카페모카"
+                                        android:textColor="#130D0D"
+                                        android:textSize="14sp"
+                                        android:textStyle="bold" />
 
-                                <ImageView
+                                    <TextView
+                                        android:layout_width="match_parent"
+                                        android:layout_height="23dp"
+                                        android:fontFamily="serif"
+                                        android:gravity="center"
+                                        android:includeFontPadding="false"
+                                        android:text="4,500원"
+                                        android:textColor="#171111"
+                                        android:textSize="17sp" />
+                                </LinearLayout>
+                            </com.google.android.material.card.MaterialCardView>
+
+                            <com.google.android.material.card.MaterialCardView
+                                android:layout_width="0dp"
+                                android:layout_height="138dp"
+                                android:layout_columnWeight="1"
+                                android:layout_margin="4dp"
+                                app:cardBackgroundColor="#F8E8E8"
+                                app:cardCornerRadius="10dp"
+                                app:cardElevation="0dp">
+
+                                <LinearLayout
                                     android:layout_width="match_parent"
-                                    android:layout_height="74dp"
-                                    android:background="#FFFFFF"
-                                    android:contentDescription="카푸치노 임시 이미지"
-                                    android:padding="17dp"
-                                    android:scaleType="centerCrop"
-                                    android:src="@drawable/cappuccino" />
+                                    android:layout_height="match_parent"
+                                    android:gravity="center_horizontal"
+                                    android:orientation="vertical"
+                                    android:padding="8dp">
 
-                                <TextView
+                                    <ImageView
+                                        android:layout_width="match_parent"
+                                        android:layout_height="74dp"
+                                        android:background="#FFFFFF"
+                                        android:contentDescription="초코라떼 임시 이미지"
+                                        android:padding="17dp"
+                                        android:scaleType="centerCrop"
+                                        android:src="@drawable/chocolatte" />
+
+                                    <TextView
+                                        android:layout_width="match_parent"
+                                        android:layout_height="25dp"
+                                        android:fontFamily="serif"
+                                        android:gravity="center"
+                                        android:includeFontPadding="false"
+                                        android:maxLines="1"
+                                        android:text="초코라떼"
+                                        android:textColor="#130D0D"
+                                        android:textSize="15sp"
+                                        android:textStyle="bold" />
+
+                                    <TextView
+                                        android:layout_width="match_parent"
+                                        android:layout_height="23dp"
+                                        android:fontFamily="serif"
+                                        android:gravity="center"
+                                        android:includeFontPadding="false"
+                                        android:text="4,500원"
+                                        android:textColor="#171111"
+                                        android:textSize="17sp" />
+                                </LinearLayout>
+                            </com.google.android.material.card.MaterialCardView>
+
+                            <com.google.android.material.card.MaterialCardView
+                                android:layout_width="0dp"
+                                android:layout_height="138dp"
+                                android:layout_columnWeight="1"
+                                android:layout_margin="4dp"
+                                app:cardBackgroundColor="#F8E8E8"
+                                app:cardCornerRadius="10dp"
+                                app:cardElevation="0dp">
+
+                                <LinearLayout
                                     android:layout_width="match_parent"
-                                    android:layout_height="25dp"
-                                    android:fontFamily="serif"
-                                    android:gravity="center"
-                                    android:includeFontPadding="false"
-                                    android:maxLines="1"
-                                    android:text="카푸치노"
-                                    android:textColor="#130D0D"
-                                    android:textSize="15sp"
-                                    android:textStyle="bold" />
+                                    android:layout_height="match_parent"
+                                    android:gravity="center_horizontal"
+                                    android:orientation="vertical"
+                                    android:padding="8dp">
 
-                                <TextView
+                                    <ImageView
+                                        android:layout_width="match_parent"
+                                        android:layout_height="74dp"
+                                        android:background="#FFFFFF"
+                                        android:contentDescription="녹차라떼 임시 이미지"
+                                        android:padding="17dp"
+                                        android:scaleType="centerCrop"
+                                        android:src="@drawable/greentealatte" />
+
+                                    <TextView
+                                        android:layout_width="match_parent"
+                                        android:layout_height="25dp"
+                                        android:fontFamily="serif"
+                                        android:gravity="center"
+                                        android:includeFontPadding="false"
+                                        android:maxLines="1"
+                                        android:text="녹차라떼"
+                                        android:textColor="#130D0D"
+                                        android:textSize="15sp"
+                                        android:textStyle="bold" />
+
+                                    <TextView
+                                        android:layout_width="match_parent"
+                                        android:layout_height="23dp"
+                                        android:fontFamily="serif"
+                                        android:gravity="center"
+                                        android:includeFontPadding="false"
+                                        android:text="4,500원"
+                                        android:textColor="#171111"
+                                        android:textSize="17sp" />
+                                </LinearLayout>
+                            </com.google.android.material.card.MaterialCardView>
+
+                            <com.google.android.material.card.MaterialCardView
+                                android:layout_width="0dp"
+                                android:layout_height="138dp"
+                                android:layout_columnWeight="1"
+                                android:layout_margin="4dp"
+                                app:cardBackgroundColor="#F8E8E8"
+                                app:cardCornerRadius="10dp"
+                                app:cardElevation="0dp">
+
+                                <LinearLayout
                                     android:layout_width="match_parent"
-                                    android:layout_height="23dp"
-                                    android:fontFamily="serif"
-                                    android:gravity="center"
-                                    android:includeFontPadding="false"
-                                    android:text="4,000원"
-                                    android:textColor="#171111"
-                                    android:textSize="17sp" />
-                            </LinearLayout>
-                        </com.google.android.material.card.MaterialCardView>
+                                    android:layout_height="match_parent"
+                                    android:gravity="center_horizontal"
+                                    android:orientation="vertical"
+                                    android:padding="8dp">
 
-                        <com.google.android.material.card.MaterialCardView
-                            android:layout_width="0dp"
-                            android:layout_height="138dp"
-                            android:layout_columnWeight="1"
-                            android:layout_margin="4dp"
-                            app:cardBackgroundColor="#F8E8E8"
-                            app:cardCornerRadius="10dp"
-                            app:cardElevation="0dp">
+                                    <ImageView
+                                        android:layout_width="match_parent"
+                                        android:layout_height="74dp"
+                                        android:background="#FFFFFF"
+                                        android:contentDescription="레몬에이드 임시 이미지"
+                                        android:padding="17dp"
+                                        android:scaleType="centerCrop"
+                                        android:src="@drawable/lemonade" />
 
-                            <LinearLayout
-                                android:layout_width="match_parent"
-                                android:layout_height="match_parent"
-                                android:gravity="center_horizontal"
-                                android:orientation="vertical"
-                                android:padding="8dp">
+                                    <TextView
+                                        android:layout_width="match_parent"
+                                        android:layout_height="25dp"
+                                        android:fontFamily="serif"
+                                        android:gravity="center"
+                                        android:includeFontPadding="false"
+                                        android:maxLines="1"
+                                        android:text="레몬에이드"
+                                        android:textColor="#130D0D"
+                                        android:textSize="15sp"
+                                        android:textStyle="bold" />
 
-                                <ImageView
+                                    <TextView
+                                        android:layout_width="match_parent"
+                                        android:layout_height="23dp"
+                                        android:fontFamily="serif"
+                                        android:gravity="center"
+                                        android:includeFontPadding="false"
+                                        android:text="4,500원"
+                                        android:textColor="#171111"
+                                        android:textSize="17sp" />
+                                </LinearLayout>
+                            </com.google.android.material.card.MaterialCardView>
+
+                            <com.google.android.material.card.MaterialCardView
+                                android:layout_width="0dp"
+                                android:layout_height="138dp"
+                                android:layout_columnWeight="1"
+                                android:layout_margin="4dp"
+                                app:cardBackgroundColor="#F8E8E8"
+                                app:cardCornerRadius="10dp"
+                                app:cardElevation="0dp">
+
+                                <LinearLayout
                                     android:layout_width="match_parent"
-                                    android:layout_height="74dp"
-                                    android:background="#FFFFFF"
-                                    android:contentDescription="바닐라라떼 임시 이미지"
-                                    android:padding="17dp"
-                                    android:scaleType="centerCrop"
-                                    android:src="@drawable/vanillalatte" />
+                                    android:layout_height="match_parent"
+                                    android:gravity="center_horizontal"
+                                    android:orientation="vertical"
+                                    android:padding="8dp">
 
-                                <TextView
-                                    android:layout_width="match_parent"
-                                    android:layout_height="25dp"
-                                    android:fontFamily="serif"
-                                    android:gravity="center"
-                                    android:includeFontPadding="false"
-                                    android:maxLines="1"
-                                    android:text="바닐라라떼"
-                                    android:textColor="#130D0D"
-                                    android:textSize="15sp"
-                                    android:textStyle="bold" />
+                                    <ImageView
+                                        android:layout_width="match_parent"
+                                        android:layout_height="74dp"
+                                        android:background="#FFFFFF"
+                                        android:contentDescription="복숭아아이스티 임시 이미지"
+                                        android:padding="17dp"
+                                        android:scaleType="centerCrop"
+                                        android:src="@drawable/icetea" />
 
-                                <TextView
-                                    android:layout_width="match_parent"
-                                    android:layout_height="23dp"
-                                    android:fontFamily="serif"
-                                    android:gravity="center"
-                                    android:includeFontPadding="false"
-                                    android:text="4,500원"
-                                    android:textColor="#171111"
-                                    android:textSize="17sp" />
-                            </LinearLayout>
-                        </com.google.android.material.card.MaterialCardView>
+                                    <TextView
+                                        android:layout_width="match_parent"
+                                        android:layout_height="25dp"
+                                        android:ellipsize="end"
+                                        android:fontFamily="serif"
+                                        android:gravity="center"
+                                        android:includeFontPadding="false"
+                                        android:maxLines="1"
+                                        android:text="복숭아아이스티"
+                                        android:textColor="#130D0D"
+                                        android:textSize="14sp"
+                                        android:textStyle="bold" />
 
-                        <com.google.android.material.card.MaterialCardView
-                            android:layout_width="0dp"
-                            android:layout_height="138dp"
-                            android:layout_columnWeight="1"
-                            android:layout_margin="4dp"
-                            app:cardBackgroundColor="#F8E8E8"
-                            app:cardCornerRadius="10dp"
-                            app:cardElevation="0dp">
-
-                            <LinearLayout
-                                android:layout_width="match_parent"
-                                android:layout_height="match_parent"
-                                android:gravity="center_horizontal"
-                                android:orientation="vertical"
-                                android:padding="8dp">
-
-                                <ImageView
-                                    android:layout_width="match_parent"
-                                    android:layout_height="74dp"
-                                    android:background="#FFFFFF"
-                                    android:contentDescription="카라멜마키아토 임시 이미지"
-                                    android:padding="17dp"
-                                    android:scaleType="centerCrop"
-                                    android:src="@drawable/cafemocha" />
-
-                                <TextView
-                                    android:layout_width="match_parent"
-                                    android:layout_height="25dp"
-                                    android:ellipsize="end"
-                                    android:fontFamily="serif"
-                                    android:gravity="center"
-                                    android:includeFontPadding="false"
-                                    android:maxLines="1"
-                                    android:text="카페모카"
-                                    android:textColor="#130D0D"
-                                    android:textSize="14sp"
-                                    android:textStyle="bold" />
-
-                                <TextView
-                                    android:layout_width="match_parent"
-                                    android:layout_height="23dp"
-                                    android:fontFamily="serif"
-                                    android:gravity="center"
-                                    android:includeFontPadding="false"
-                                    android:text="4,500원"
-                                    android:textColor="#171111"
-                                    android:textSize="17sp" />
-                            </LinearLayout>
-                        </com.google.android.material.card.MaterialCardView>
-
-                        <com.google.android.material.card.MaterialCardView
-                            android:layout_width="0dp"
-                            android:layout_height="138dp"
-                            android:layout_columnWeight="1"
-                            android:layout_margin="4dp"
-                            app:cardBackgroundColor="#F8E8E8"
-                            app:cardCornerRadius="10dp"
-                            app:cardElevation="0dp">
-
-                            <LinearLayout
-                                android:layout_width="match_parent"
-                                android:layout_height="match_parent"
-                                android:gravity="center_horizontal"
-                                android:orientation="vertical"
-                                android:padding="8dp">
-
-                                <ImageView
-                                    android:layout_width="match_parent"
-                                    android:layout_height="74dp"
-                                    android:background="#FFFFFF"
-                                    android:contentDescription="초코라떼 임시 이미지"
-                                    android:padding="17dp"
-                                    android:scaleType="centerCrop"
-                                    android:src="@drawable/chocolatte" />
-
-                                <TextView
-                                    android:layout_width="match_parent"
-                                    android:layout_height="25dp"
-                                    android:fontFamily="serif"
-                                    android:gravity="center"
-                                    android:includeFontPadding="false"
-                                    android:maxLines="1"
-                                    android:text="초코라떼"
-                                    android:textColor="#130D0D"
-                                    android:textSize="15sp"
-                                    android:textStyle="bold" />
-
-                                <TextView
-                                    android:layout_width="match_parent"
-                                    android:layout_height="23dp"
-                                    android:fontFamily="serif"
-                                    android:gravity="center"
-                                    android:includeFontPadding="false"
-                                    android:text="4,500원"
-                                    android:textColor="#171111"
-                                    android:textSize="17sp" />
-                            </LinearLayout>
-                        </com.google.android.material.card.MaterialCardView>
-
-                        <com.google.android.material.card.MaterialCardView
-                            android:layout_width="0dp"
-                            android:layout_height="138dp"
-                            android:layout_columnWeight="1"
-                            android:layout_margin="4dp"
-                            app:cardBackgroundColor="#F8E8E8"
-                            app:cardCornerRadius="10dp"
-                            app:cardElevation="0dp">
-
-                            <LinearLayout
-                                android:layout_width="match_parent"
-                                android:layout_height="match_parent"
-                                android:gravity="center_horizontal"
-                                android:orientation="vertical"
-                                android:padding="8dp">
-
-                                <ImageView
-                                    android:layout_width="match_parent"
-                                    android:layout_height="74dp"
-                                    android:background="#FFFFFF"
-                                    android:contentDescription="녹차라떼 임시 이미지"
-                                    android:padding="17dp"
-                                    android:scaleType="centerCrop"
-                                    android:src="@drawable/greentealatte" />
-
-                                <TextView
-                                    android:layout_width="match_parent"
-                                    android:layout_height="25dp"
-                                    android:fontFamily="serif"
-                                    android:gravity="center"
-                                    android:includeFontPadding="false"
-                                    android:maxLines="1"
-                                    android:text="녹차라떼"
-                                    android:textColor="#130D0D"
-                                    android:textSize="15sp"
-                                    android:textStyle="bold" />
-
-                                <TextView
-                                    android:layout_width="match_parent"
-                                    android:layout_height="23dp"
-                                    android:fontFamily="serif"
-                                    android:gravity="center"
-                                    android:includeFontPadding="false"
-                                    android:text="4,500원"
-                                    android:textColor="#171111"
-                                    android:textSize="17sp" />
-                            </LinearLayout>
-                        </com.google.android.material.card.MaterialCardView>
-
-                        <com.google.android.material.card.MaterialCardView
-                            android:layout_width="0dp"
-                            android:layout_height="138dp"
-                            android:layout_columnWeight="1"
-                            android:layout_margin="4dp"
-                            app:cardBackgroundColor="#F8E8E8"
-                            app:cardCornerRadius="10dp"
-                            app:cardElevation="0dp">
-
-                            <LinearLayout
-                                android:layout_width="match_parent"
-                                android:layout_height="match_parent"
-                                android:gravity="center_horizontal"
-                                android:orientation="vertical"
-                                android:padding="8dp">
-
-                                <ImageView
-                                    android:layout_width="match_parent"
-                                    android:layout_height="74dp"
-                                    android:background="#FFFFFF"
-                                    android:contentDescription="레몬에이드 임시 이미지"
-                                    android:padding="17dp"
-                                    android:scaleType="centerCrop"
-                                    android:src="@drawable/lemonade" />
-
-                                <TextView
-                                    android:layout_width="match_parent"
-                                    android:layout_height="25dp"
-                                    android:fontFamily="serif"
-                                    android:gravity="center"
-                                    android:includeFontPadding="false"
-                                    android:maxLines="1"
-                                    android:text="레몬에이드"
-                                    android:textColor="#130D0D"
-                                    android:textSize="15sp"
-                                    android:textStyle="bold" />
-
-                                <TextView
-                                    android:layout_width="match_parent"
-                                    android:layout_height="23dp"
-                                    android:fontFamily="serif"
-                                    android:gravity="center"
-                                    android:includeFontPadding="false"
-                                    android:text="4,500원"
-                                    android:textColor="#171111"
-                                    android:textSize="17sp" />
-                            </LinearLayout>
-                        </com.google.android.material.card.MaterialCardView>
-
-                        <com.google.android.material.card.MaterialCardView
-                            android:layout_width="0dp"
-                            android:layout_height="138dp"
-                            android:layout_columnWeight="1"
-                            android:layout_margin="4dp"
-                            app:cardBackgroundColor="#F8E8E8"
-                            app:cardCornerRadius="10dp"
-                            app:cardElevation="0dp">
-
-                            <LinearLayout
-                                android:layout_width="match_parent"
-                                android:layout_height="match_parent"
-                                android:gravity="center_horizontal"
-                                android:orientation="vertical"
-                                android:padding="8dp">
-
-                                <ImageView
-                                    android:layout_width="match_parent"
-                                    android:layout_height="74dp"
-                                    android:background="#FFFFFF"
-                                    android:contentDescription="복숭아아이스티 임시 이미지"
-                                    android:padding="17dp"
-                                    android:scaleType="centerCrop"
-                                    android:src="@drawable/icetea" />
-
-                                <TextView
-                                    android:layout_width="match_parent"
-                                    android:layout_height="25dp"
-                                    android:ellipsize="end"
-                                    android:fontFamily="serif"
-                                    android:gravity="center"
-                                    android:includeFontPadding="false"
-                                    android:maxLines="1"
-                                    android:text="복숭아아이스티"
-                                    android:textColor="#130D0D"
-                                    android:textSize="14sp"
-                                    android:textStyle="bold" />
-
-                                <TextView
-                                    android:layout_width="match_parent"
-                                    android:layout_height="23dp"
-                                    android:fontFamily="serif"
-                                    android:gravity="center"
-                                    android:includeFontPadding="false"
-                                    android:text="4,000원"
-                                    android:textColor="#171111"
-                                    android:textSize="17sp" />
-                            </LinearLayout>
-                        </com.google.android.material.card.MaterialCardView>
-                    </GridLayout>
-                </ScrollView>
-            </LinearLayout>
+                                    <TextView
+                                        android:layout_width="match_parent"
+                                        android:layout_height="23dp"
+                                        android:fontFamily="serif"
+                                        android:gravity="center"
+                                        android:includeFontPadding="false"
+                                        android:text="4,000원"
+                                        android:textColor="#171111"
+                                        android:textSize="17sp" />
+                                </LinearLayout>
+                            </com.google.android.material.card.MaterialCardView>
+                        </GridLayout>
+                    </ScrollView>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
         </com.google.android.material.card.MaterialCardView>
-    </com.google.android.material.card.MaterialCardView>
 
-    <Space
-        android:layout_width="1dp"
-        android:layout_height="0dp"
-        android:layout_weight="1" />
+        <Space
+            android:layout_width="1dp"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
 
-    <!-- The artwork already includes the purple circle, label, and listening state. -->
-    <ImageView
-        android:id="@+id/talking_status_image"
-        android:layout_width="136dp"
-        android:layout_height="166dp"
-        android:layout_gravity="center_horizontal"
-        android:adjustViewBounds="true"
-        android:contentDescription="말하기 및 듣는 중 상태"
-        android:scaleType="fitCenter"
-        android:src="@drawable/talking" />
+        <ImageView
+            android:id="@+id/talking_status_image"
+            android:layout_width="136dp"
+            android:layout_height="166dp"
+            android:layout_gravity="center_horizontal"
+            android:adjustViewBounds="true"
+            android:contentDescription="말하기 및 듣는 중 상태"
+            android:scaleType="fitCenter"
+            android:src="@drawable/talking" />
 
-    <Space
-        android:layout_width="1dp"
-        android:layout_height="0dp"
-        android:layout_weight="1" />
+        <Space
+            android:layout_width="1dp"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
 
-    <com.google.android.material.card.MaterialCardView
-        android:layout_width="match_parent"
-        android:layout_height="68dp"
-        android:layout_marginStart="8dp"
-        android:layout_marginEnd="8dp"
-        app:cardBackgroundColor="#7373F9"
-        app:cardCornerRadius="10dp"
-        app:cardElevation="0dp"
-        app:cardUseCompatPadding="false">
-
-        <TextView
+        <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:fontFamily="serif"
-            android:gravity="center"
-            android:includeFontPadding="false"
-            android:text="“보통 크기로 주세요”"
-            android:textColor="#FFFFFF"
-            android:textSize="26sp"
-            android:textStyle="bold" />
-    </com.google.android.material.card.MaterialCardView>
+            android:layout_height="68dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginEnd="8dp"
+            app:cardBackgroundColor="#7373F9"
+            app:cardCornerRadius="10dp"
+            app:cardElevation="0dp"
+            app:cardUseCompatPadding="false">
+
+            <TextView
+                android:id="@+id/recognized_text"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:fontFamily="serif"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:text="“보통 크기로 주세요”"
+                android:textColor="#FFFFFF"
+                android:textSize="26sp"
+                android:textStyle="bold" />
+        </com.google.android.material.card.MaterialCardView>
     </LinearLayout>
 </FrameLayout>
