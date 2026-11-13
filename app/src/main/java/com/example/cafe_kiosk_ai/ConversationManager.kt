@@ -44,6 +44,7 @@ class ConversationManager(
     private var targetAction: NluResult? = null
     private var sessionId: String? = null
     private var analyzingSessionId: String? = null
+    internal val currentSessionId: String? get() = sessionId
 
     var state = DialogueState.WAITING_FOR_ORDER
         private set
@@ -82,7 +83,7 @@ class ConversationManager(
         NluContext(it, state, messages, drafts.toList(), orders.cart.toList(), question, orders.lastConfirmedId)
     }
 
-    /** Shared entry point for debug text, buttons, and a future STT transcript. */
+    /** Shared entry point for recognized speech, order actions, and automated tests. */
     suspend fun handleUserInput(text: String): ConversationUpdate {
         val input = text.trim()
         val context = contextSnapshot() ?: return ConversationUpdate(stage, "주문하기 버튼을 먼저 눌러주세요.")

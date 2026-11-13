@@ -2,6 +2,7 @@ package com.example.cafe_kiosk_ai
 
 import androidx.lifecycle.ViewModel
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -15,6 +16,7 @@ internal class KioskSessionViewModel : ViewModel() {
     val conversation = ConversationManager()
     private val sessionScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var inputJob: Job? = null
+    val isProcessingInput: Boolean get() = inputJob != null
     private var paymentJob: Job? = null
     private val revision = MutableStateFlow(0)
     val updates = revision.asStateFlow()
@@ -31,11 +33,20 @@ internal class KioskSessionViewModel : ViewModel() {
     }
 
     fun submit(text: String): Boolean {
-        if (inputJob?.isActive == true || conversation.stage in setOf(OrderStage.HOME, OrderStage.PAYMENT)) return false
-        inputJob = sessionScope.launch {
-            conversation.handleUserInput(text)
-            publish()
+        if (text.isBlank() || isProcessingInput || conversation.stage in setOf(OrderStage.HOME, OrderStage.PAYMENT)) return false
+        val job = sessionScope.launch(start = CoroutineStart.LAZY) {
+            try {
+                conversation.handleUserInput(text)
+            } finally {
+                if (inputJob === coroutineContext[Job]) {
+                    inputJob = null
+                    publish()
+                }
+            }
         }
+        inputJob = job
+        publish()
+        job.start()
         return true
     }
 
@@ -55,8 +66,9 @@ internal class KioskSessionViewModel : ViewModel() {
     }
 
     private fun resetSession() {
-        inputJob?.cancel()
+        val previousInput = inputJob
         inputJob = null
+        previousInput?.cancel()
         paymentJob?.cancel()
         paymentJob = null
         conversation.resetSession()

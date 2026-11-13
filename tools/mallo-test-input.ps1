@@ -26,7 +26,7 @@ do {
     $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Text))
     $result = & $AdbPath @deviceArgs shell am broadcast -a com.example.cafe_kiosk_ai.DEBUG_TEXT_INPUT -p com.example.cafe_kiosk_ai --es text_b64 $encoded
     if ($LASTEXITCODE -ne 0 -or -not ($result -match 'Broadcast completed: result=-1\s*$')) {
-        throw "Input was not delivered. Open the order screen in the debug app and select one ADB device. $result"
+        throw "Input was not accepted. Keep the debug app's order screen in the foreground and wait for any pending response. $result"
     }
-    Write-Host 'Text is ready. Press Send in the app.'
+    Write-Host 'Text was submitted to the order session.'
 } while ($interactive)

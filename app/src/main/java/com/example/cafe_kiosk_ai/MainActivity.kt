@@ -1,28 +1,54 @@
 package com.example.cafe_kiosk_ai
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.doOnNextLayout
 import androidx.core.view.isVisible
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
     private enum class Page { START, CONVERSATION, PAYMENT }
+    private enum class VoiceState(@StringRes val message: Int) {
+        READY(R.string.voice_ready), LISTENING(R.string.voice_listening),
+        PROCESSING(R.string.voice_processing), ERROR(R.string.voice_error), STOPPED(R.string.voice_stopped)
+    }
+
     private lateinit var screenContainer: FrameLayout
     private lateinit var session: KioskSessionViewModel
+    private lateinit var voice: VoiceController
     private val testTextInput = TestTextInput()
     private var page: Page? = null
     private var transcript: ChatTranscript? = null
     private var savedChatOffset: Int? = null
+    private var displayedSessionId: String? = null
+    private var foreground = false
+    private var permissionRequested = false
+    private var permissionRequestInFlight = false
+    private var voiceTurnActive = false
+    private var voiceState = VoiceState.STOPPED
+    private var voiceRestart: Job? = null
+    private var consecutiveVoiceErrors = 0
+
+    private val requestPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+            permissionRequestInFlight = false
+            syncVoiceInput()
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -30,17 +56,12 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         screenContainer = findViewById(R.id.screen_container)
         session = ViewModelProvider(this)[KioskSessionViewModel::class.java]
+        voice = AndroidSpeechRecognizerController(this, ::onVoiceEvent)
         savedChatOffset = savedInstanceState?.getInt("chatOffset", -1)?.takeIf { it >= 0 }
+        permissionRequested = savedInstanceState?.getBoolean("voicePermissionRequested") == true
+        permissionRequestInFlight = savedInstanceState?.getBoolean("voicePermissionPending") == true
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { view, insets ->
-            val padding = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.ime())
-            val keyboardVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
-            val showArtwork = !keyboardVisible && resources.configuration.screenHeightDp >= 520
-            val artwork = screenContainer.findViewById<View>(R.id.voice_artwork)
-            if (artwork != null && artwork.isVisible != showArtwork) {
-                val current = transcript
-                if (current?.isNearLatest() == true) view.doOnNextLayout { current.scrollToLatest() }
-                artwork.isVisible = showArtwork
-            }
+            val padding = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
             view.setPadding(padding.left, padding.top, padding.right, padding.bottom)
             insets
         }
@@ -63,11 +84,26 @@ class MainActivity : AppCompatActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putInt("chatOffset", transcript?.takeUnless { it.isNearLatest() }?.offset ?: savedChatOffset ?: -1)
+        outState.putBoolean("voicePermissionRequested", page == Page.CONVERSATION && permissionRequested)
+        outState.putBoolean("voicePermissionPending", permissionRequestInFlight)
         super.onSaveInstanceState(outState)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        foreground = true
+        syncVoiceInput()
+    }
+
+    override fun onPause() {
+        foreground = false
+        stopVoiceInput()
+        super.onPause()
     }
 
     override fun onDestroy() {
         testTextInput.detach()
+        voice.release()
         super.onDestroy()
     }
 
@@ -78,23 +114,29 @@ class MainActivity : AppCompatActivity() {
             OrderStage.PAYMENT -> Page.PAYMENT
             else -> Page.CONVERSATION
         }
-        if (page != destination) showPage(destination)
+        if (page != destination || (destination == Page.CONVERSATION && displayedSessionId != conversation.currentSessionId)) {
+            showPage(destination)
+        }
         when (destination) {
             Page.START -> Unit
             Page.CONVERSATION -> {
                 transcript?.render(conversation.messages, conversation.pending, savedChatOffset)
                 savedChatOffset = null
+                syncVoiceInput()
             }
             Page.PAYMENT -> renderPayment(screenContainer.getChildAt(0))
         }
     }
 
     private fun showPage(destination: Page) {
-        savedChatOffset = if (destination == Page.START) null else
+        stopVoiceInput()
+        if (page != null) permissionRequested = false
+        savedChatOffset = if (destination == Page.START || destination == page) null else
             transcript?.takeUnless { it.isNearLatest() }?.offset ?: savedChatOffset
         transcript = null
         testTextInput.detach()
         page = destination
+        displayedSessionId = session.conversation.currentSessionId.takeIf { destination == Page.CONVERSATION }
         listOf(R.id.nav_start, R.id.nav_conversation, R.id.nav_payment).forEachIndexed { index, id ->
             findViewById<TextView>(id).apply {
                 val selected = index == destination.ordinal
@@ -114,13 +156,121 @@ class MainActivity : AppCompatActivity() {
             Page.START -> screen.findViewById<View>(R.id.btn_start_order).setOnClickListener { session.startSession() }
             Page.CONVERSATION -> {
                 screen.findViewById<View>(R.id.home_icon).setOnClickListener { session.goHome() }
-                transcript = ChatTranscript(screen, session::submit)
-                val slot = screen.findViewById<FrameLayout>(R.id.test_input_slot)
-                testTextInput.attach(this, slot, { session.conversation.pending }, { session.conversation.stage.screen }, session::submit)
+                transcript = ChatTranscript(screen, ::submitOrder)
+                testTextInput.attach(this, ::submitOrder)
+                screen.findViewById<View>(R.id.voice_retry).setOnClickListener {
+                    consecutiveVoiceErrors = 0
+                    permissionRequested = false
+                    showVoiceState(VoiceState.READY)
+                    syncVoiceInput()
+                }
             }
             Page.PAYMENT -> Unit
         }
         ViewCompat.requestApplyInsets(findViewById(R.id.main))
+    }
+
+    private fun isVoiceScreenActive(): Boolean {
+        val conversation = session.conversation
+        return foreground && page == Page.CONVERSATION && displayedSessionId == conversation.currentSessionId &&
+            conversation.stage != OrderStage.PAYMENT
+    }
+
+    private fun syncVoiceInput() {
+        if (!isVoiceScreenActive()) return
+        if (session.isProcessingInput) {
+            cancelVoiceTurn()
+            showVoiceState(VoiceState.PROCESSING)
+            return
+        }
+        if (voiceTurnActive || voiceRestart != null || permissionRequestInFlight) return
+        if (voiceState == VoiceState.PROCESSING) {
+            showVoiceState(VoiceState.READY)
+            restartVoiceAfter(400L)
+            return
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            if (permissionRequested) {
+                showVoiceState(VoiceState.ERROR, R.string.voice_permission_required)
+            } else {
+                permissionRequested = true
+                permissionRequestInFlight = true
+                showVoiceState(VoiceState.READY)
+                requestPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            }
+            return
+        }
+        if (voiceState == VoiceState.ERROR) return
+        showVoiceState(VoiceState.READY)
+        voiceTurnActive = true
+        voice.startListening()
+    }
+
+    private fun onVoiceEvent(event: VoiceRecognitionEvent) {
+        if (!voiceTurnActive || !isVoiceScreenActive()) return
+        when (event) {
+            VoiceRecognitionEvent.Listening -> showVoiceState(VoiceState.LISTENING)
+            VoiceRecognitionEvent.Processing -> showVoiceState(VoiceState.PROCESSING)
+            is VoiceRecognitionEvent.Result -> {
+                voiceTurnActive = false
+                if (!submitOrder(event.text)) syncVoiceInput()
+            }
+            is VoiceRecognitionEvent.Error -> {
+                voiceTurnActive = false
+                if (event.reason.canRetry && consecutiveVoiceErrors < 3) {
+                    restartVoiceAfter(1_000L shl consecutiveVoiceErrors)
+                    consecutiveVoiceErrors++
+                }
+                val message = when (event.reason) {
+                    VoiceRecognitionError.NO_SPEECH -> R.string.voice_no_speech
+                    VoiceRecognitionError.PERMISSION -> R.string.voice_permission_required
+                    VoiceRecognitionError.UNAVAILABLE -> R.string.voice_unavailable
+                    VoiceRecognitionError.TEMPORARY, VoiceRecognitionError.SERVICE -> R.string.voice_error
+                }
+                showVoiceState(VoiceState.ERROR, message)
+            }
+        }
+    }
+
+    private fun submitOrder(text: String): Boolean {
+        if (text.isBlank() || !isVoiceScreenActive() || session.isProcessingInput) return false
+        cancelVoiceTurn()
+        consecutiveVoiceErrors = 0
+        showVoiceState(VoiceState.PROCESSING)
+        return session.submit(text)
+    }
+
+    private fun restartVoiceAfter(delayMillis: Long) {
+        voiceRestart = lifecycleScope.launch {
+            delay(delayMillis)
+            voiceRestart = null
+            if (!isVoiceScreenActive()) return@launch
+            showVoiceState(VoiceState.READY)
+            syncVoiceInput()
+        }
+    }
+
+    private fun cancelVoiceTurn() {
+        voiceTurnActive = false
+        voiceRestart?.cancel()
+        voiceRestart = null
+        voice.stopListening()
+    }
+
+    private fun stopVoiceInput() {
+        cancelVoiceTurn()
+        consecutiveVoiceErrors = 0
+        showVoiceState(VoiceState.STOPPED)
+    }
+
+    private fun showVoiceState(state: VoiceState, @StringRes message: Int = state.message) {
+        voiceState = state
+        if (page != Page.CONVERSATION) return
+        screenContainer.findViewById<TextView>(R.id.voice_status)?.apply {
+            val label = getString(message)
+            if (text != label) text = label
+        }
+        screenContainer.findViewById<View>(R.id.voice_retry)?.isVisible = state == VoiceState.ERROR && voiceRestart == null
     }
 
     private fun renderPayment(screen: View) {

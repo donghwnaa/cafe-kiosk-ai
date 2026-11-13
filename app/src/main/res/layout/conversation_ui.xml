@@ -106,23 +106,49 @@
         </com.google.android.material.card.MaterialCardView>
     </com.google.android.material.card.MaterialCardView>
 
-    <!-- The artwork already includes the purple circle, label, and listening state. -->
-    <ImageView
-        android:id="@+id/voice_artwork"
-        android:layout_width="136dp"
-        android:layout_height="166dp"
-        android:layout_gravity="center_horizontal"
-        android:adjustViewBounds="true"
-        android:contentDescription="음성 주문 안내 그림"
-        android:scaleType="fitCenter"
-        android:src="@drawable/talking" />
-
-    <FrameLayout
-        android:id="@+id/test_input_slot"
+    <LinearLayout
+        android:id="@+id/voice_footer"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginStart="8dp"
+        android:layout_marginTop="8dp"
         android:layout_marginEnd="8dp"
-        android:visibility="gone" />
+        android:background="@drawable/bg_soft_panel"
+        android:gravity="center_vertical"
+        android:minHeight="64dp"
+        android:orientation="horizontal"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="8dp">
+
+        <ImageView
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:contentDescription="@null"
+            android:importantForAccessibility="no"
+            android:scaleType="fitCenter"
+            android:src="@drawable/voice_order_icon" />
+
+        <TextView
+            android:id="@+id/voice_status"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_weight="1"
+            android:accessibilityLiveRegion="polite"
+            android:fontFamily="serif"
+            android:text="@string/voice_stopped"
+            android:textColor="#2D2626"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/voice_retry"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="@string/voice_retry"
+            android:textSize="16sp"
+            android:visibility="gone" />
+    </LinearLayout>
     </LinearLayout>
 </FrameLayout>

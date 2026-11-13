@@ -2,17 +2,10 @@
 
 package com.example.cafe_kiosk_ai
 
-import android.widget.FrameLayout
-import androidx.appcompat.app.AppCompatActivity
+import android.app.Activity
 
 internal class TestTextInput {
-    fun attach(
-        activity: AppCompatActivity,
-        slot: FrameLayout,
-        pending: () -> PendingQuestion,
-        screen: () -> Int,
-        submit: (String) -> Boolean
-    ) = Unit
+    fun attach(activity: Activity, submit: (String) -> Boolean) = Unit
 
     fun detach() = Unit
 }
