@@ -3,6 +3,7 @@ package com.example.cafe_kiosk_ai
 import android.graphics.Color
 import android.graphics.Typeface
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
@@ -25,18 +26,37 @@ internal class ChatTranscript(screen: View, private val submit: (String) -> Bool
     private var latestCartHeading: TextView? = null
     private var currentActions: LinearLayout? = null
     private var browsedInitialMenu = false
+    private var manualScrollRevision = 0
+    private var acceptedVoiceScrollRevision: Int? = null
 
     init {
         scroll.setOnScrollChangeListener { _, _, y, _, _ ->
             if (renderedCount == 1 && y > 0) browsedInitialMenu = true
+        }
+        scroll.setOnTouchListener { _, event ->
+            if (event.actionMasked == MotionEvent.ACTION_MOVE) manualScrollRevision++
+            false
+        }
+        scroll.setOnGenericMotionListener { _, event ->
+            if (event.actionMasked == MotionEvent.ACTION_SCROLL) manualScrollRevision++
+            false
         }
     }
 
     val offset: Int get() = scroll.scrollY
     fun isNearLatest(): Boolean = rows.bottom - (scroll.height + offset) <= dp(32)
 
+    fun followAcceptedVoiceInput() {
+        acceptedVoiceScrollRevision = manualScrollRevision
+    }
+
     fun render(messages: List<ChatMessage>, pending: PendingQuestion, restoreOffset: Int?) {
         if (renderedCount >= messages.size) return
+        val voiceScroll = acceptedVoiceScrollRevision?.takeIf {
+            messages.subList(renderedCount, messages.size).any(ChatMessage::fromUser)
+        }
+        if (voiceScroll != null) acceptedVoiceScrollRevision = null
+        val firstNewRow = renderedCount
         val follow = renderedCount == 0 || isNearLatest() || (renderedCount == 1 && !browsedInitialMenu)
         currentActions?.removeAllViews()
         currentActions = null
@@ -50,6 +70,14 @@ internal class ChatTranscript(screen: View, private val submit: (String) -> Bool
             when {
                 restoreOffset != null -> scroll.scrollTo(0, restoreOffset)
                 initialGreeting -> scroll.scrollTo(0, 0)
+                voiceScroll != null -> {
+                    // A new scroll after acceptance takes precedence over the queued jump.
+                    if (voiceScroll == manualScrollRevision) {
+                        // Show the start of the turn if the new messages and card cannot fit together.
+                        val target = minOf(rows.bottom - scroll.height, rows.top + rows.getChildAt(firstNewRow).top)
+                        scroll.smoothScrollTo(0, target)
+                    }
+                }
                 follow -> scrollToLatest()
             }
         }

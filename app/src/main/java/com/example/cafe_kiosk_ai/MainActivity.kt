@@ -213,7 +213,11 @@ class MainActivity : AppCompatActivity() {
             VoiceRecognitionEvent.Processing -> showVoiceState(VoiceState.PROCESSING)
             is VoiceRecognitionEvent.Result -> {
                 voiceTurnActive = false
-                if (!submitOrder(event.text)) syncVoiceInput()
+                if (submitOrder(event.text)) {
+                    transcript?.followAcceptedVoiceInput()
+                } else {
+                    syncVoiceInput()
+                }
             }
             is VoiceRecognitionEvent.Error -> {
                 voiceTurnActive = false
