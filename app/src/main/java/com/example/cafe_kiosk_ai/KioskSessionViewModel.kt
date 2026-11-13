@@ -13,13 +13,36 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 internal class KioskSessionViewModel : ViewModel() {
-    val conversation = ConversationManager()
+    private data class SpokenResponse(val text: String, val forPayment: Boolean)
+
+    private val spokenResponses = ArrayDeque<SpokenResponse>()
+    private var captureSpokenResponses = false
+    val conversation = ConversationManager(responseOutput = AiResponseOutput(::enqueueResponse))
     private val sessionScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var inputJob: Job? = null
     val isProcessingInput: Boolean get() = inputJob != null
     private var paymentJob: Job? = null
     private val revision = MutableStateFlow(0)
     val updates = revision.asStateFlow()
+
+    val hasSpokenResponses: Boolean get() = spokenResponses.isNotEmpty()
+
+    fun captureSpokenResponses(enabled: Boolean) {
+        captureSpokenResponses = enabled
+        if (!enabled) spokenResponses.clear()
+    }
+
+    fun takeSpokenResponse(forPayment: Boolean): String? {
+        // A response belongs to the screen it was generated for.
+        spokenResponses.removeAll { it.forPayment != forPayment }
+        return spokenResponses.removeFirstOrNull()?.text
+    }
+
+    private fun enqueueResponse(message: ChatMessage) {
+        if (captureSpokenResponses) {
+            spokenResponses.addLast(SpokenResponse(message.text, conversation.stage == OrderStage.PAYMENT))
+        }
+    }
 
     fun startSession() {
         resetSession()
@@ -66,6 +89,7 @@ internal class KioskSessionViewModel : ViewModel() {
     }
 
     private fun resetSession() {
+        spokenResponses.clear()
         val previousInput = inputJob
         inputJob = null
         previousInput?.cancel()

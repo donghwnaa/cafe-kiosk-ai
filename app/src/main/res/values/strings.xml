@@ -3,6 +3,11 @@
     <string name="voice_ready">음성 인식을 준비하고 있습니다.</string>
     <string name="voice_listening">듣는 중…</string>
     <string name="voice_processing">주문 내용을 확인하고 있습니다.</string>
+    <string name="voice_initializing_tts">안내 음성을 준비하고 있습니다.</string>
+    <string name="voice_speaking">말로가 안내하고 있습니다.</string>
+    <string name="tts_no_engine">이 기기에 음성 안내 엔진이 설치되어 있지 않습니다.</string>
+    <string name="tts_korean_unavailable">이 기기에서 한국어 안내 음성을 사용할 수 없습니다.</string>
+    <string name="tts_error">안내 음성을 재생하지 못했습니다. 화면의 안내를 확인해 주세요.</string>
     <string name="voice_error">음성 인식에 문제가 있습니다. 다시 시도해 주세요.</string>
     <string name="voice_no_speech">음성을 인식하지 못했습니다.</string>
     <string name="voice_permission_required">음성 주문을 하려면 마이크 권한을 허용해 주세요.</string>

@@ -25,12 +25,14 @@ class MainActivity : AppCompatActivity() {
     private enum class Page { START, CONVERSATION, PAYMENT }
     private enum class VoiceState(@StringRes val message: Int) {
         READY(R.string.voice_ready), LISTENING(R.string.voice_listening),
-        PROCESSING(R.string.voice_processing), ERROR(R.string.voice_error), STOPPED(R.string.voice_stopped)
+        PROCESSING(R.string.voice_processing), INITIALIZING_TTS(R.string.voice_initializing_tts),
+        SPEAKING(R.string.voice_speaking), ERROR(R.string.voice_error), STOPPED(R.string.voice_stopped)
     }
 
     private lateinit var screenContainer: FrameLayout
     private lateinit var session: KioskSessionViewModel
     private lateinit var voice: VoiceController
+    private lateinit var tts: TtsEngine
     private val testTextInput = TestTextInput()
     private var page: Page? = null
     private var transcript: ChatTranscript? = null
@@ -43,11 +45,13 @@ class MainActivity : AppCompatActivity() {
     private var voiceState = VoiceState.STOPPED
     private var voiceRestart: Job? = null
     private var consecutiveVoiceErrors = 0
+    private var activeSpeech: Any? = null
+    private var lastTtsError: TtsError? = null
 
     private val requestPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) {
             permissionRequestInFlight = false
-            syncVoiceInput()
+            syncAudio()
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -57,6 +61,7 @@ class MainActivity : AppCompatActivity() {
         screenContainer = findViewById(R.id.screen_container)
         session = ViewModelProvider(this)[KioskSessionViewModel::class.java]
         voice = AndroidSpeechRecognizerController(this, ::onVoiceEvent)
+        tts = AndroidTtsEngine(this)
         savedChatOffset = savedInstanceState?.getInt("chatOffset", -1)?.takeIf { it >= 0 }
         permissionRequested = savedInstanceState?.getBoolean("voicePermissionRequested") == true
         permissionRequestInFlight = savedInstanceState?.getBoolean("voicePermissionPending") == true
@@ -92,18 +97,21 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         foreground = true
-        syncVoiceInput()
+        session.captureSpokenResponses(true)
+        render()
     }
 
     override fun onPause() {
         foreground = false
-        stopVoiceInput()
+        session.captureSpokenResponses(false)
+        stopAudio()
         super.onPause()
     }
 
     override fun onDestroy() {
         testTextInput.detach()
         voice.release()
+        tts.release()
         super.onDestroy()
     }
 
@@ -114,7 +122,7 @@ class MainActivity : AppCompatActivity() {
             OrderStage.PAYMENT -> Page.PAYMENT
             else -> Page.CONVERSATION
         }
-        if (page != destination || (destination == Page.CONVERSATION && displayedSessionId != conversation.currentSessionId)) {
+        if (page != destination || displayedSessionId != conversation.currentSessionId) {
             showPage(destination)
         }
         when (destination) {
@@ -122,21 +130,21 @@ class MainActivity : AppCompatActivity() {
             Page.CONVERSATION -> {
                 transcript?.render(conversation.messages, conversation.pending, savedChatOffset)
                 savedChatOffset = null
-                syncVoiceInput()
             }
             Page.PAYMENT -> renderPayment(screenContainer.getChildAt(0))
         }
+        syncAudio()
     }
 
     private fun showPage(destination: Page) {
-        stopVoiceInput()
+        stopAudio()
         if (page != null) permissionRequested = false
         savedChatOffset = if (destination == Page.START || destination == page) null else
             transcript?.takeUnless { it.isNearLatest() }?.offset ?: savedChatOffset
         transcript = null
         testTextInput.detach()
         page = destination
-        displayedSessionId = session.conversation.currentSessionId.takeIf { destination == Page.CONVERSATION }
+        displayedSessionId = session.conversation.currentSessionId
         listOf(R.id.nav_start, R.id.nav_conversation, R.id.nav_payment).forEachIndexed { index, id ->
             findViewById<TextView>(id).apply {
                 val selected = index == destination.ordinal
@@ -162,7 +170,7 @@ class MainActivity : AppCompatActivity() {
                     consecutiveVoiceErrors = 0
                     permissionRequested = false
                     showVoiceState(VoiceState.READY)
-                    syncVoiceInput()
+                    syncAudio()
                 }
             }
             Page.PAYMENT -> Unit
@@ -170,19 +178,69 @@ class MainActivity : AppCompatActivity() {
         ViewCompat.requestApplyInsets(findViewById(R.id.main))
     }
 
-    private fun isVoiceScreenActive(): Boolean {
+    private fun isCurrentScreen(destination: Page): Boolean {
         val conversation = session.conversation
-        return foreground && page == Page.CONVERSATION && displayedSessionId == conversation.currentSessionId &&
-            conversation.stage != OrderStage.PAYMENT
+        return foreground && page == destination && displayedSessionId == conversation.currentSessionId && when (destination) {
+            Page.START -> conversation.stage == OrderStage.HOME
+            Page.CONVERSATION -> conversation.stage != OrderStage.HOME && conversation.stage != OrderStage.PAYMENT
+            Page.PAYMENT -> conversation.stage == OrderStage.PAYMENT
+        }
     }
 
-    private fun syncVoiceInput() {
-        if (!isVoiceScreenActive()) return
+    private fun syncAudio() {
+        val inConversation = isCurrentScreen(Page.CONVERSATION)
+        if (!inConversation && !isCurrentScreen(Page.PAYMENT)) return
+        if (activeSpeech != null) return
         if (session.isProcessingInput) {
             cancelVoiceTurn()
             showVoiceState(VoiceState.PROCESSING)
             return
         }
+        val response = session.takeSpokenResponse(forPayment = !inConversation)
+        if (response != null) {
+            speakResponse(response, if (inConversation) Page.CONVERSATION else Page.PAYMENT)
+        } else if (inConversation) {
+            syncVoiceInput()
+        }
+    }
+
+    private fun speakResponse(text: String, destination: Page) {
+        cancelVoiceTurn()
+        val speech = Any()
+        activeSpeech = speech
+        showVoiceState(if (tts.isInitializing) VoiceState.INITIALIZING_TTS else VoiceState.SPEAKING)
+        tts.speak(text) { event ->
+            if (activeSpeech === speech && isCurrentScreen(destination)) {
+                when (event) {
+                    TtsPlaybackEvent.Started -> showVoiceState(VoiceState.SPEAKING)
+                    TtsPlaybackEvent.Completed, TtsPlaybackEvent.Stopped -> {
+                        lastTtsError = null
+                        finishSpeech()
+                    }
+                    is TtsPlaybackEvent.Error -> {
+                        if (lastTtsError != event.reason) {
+                            val message = when (event.reason) {
+                                TtsError.NO_ENGINE -> R.string.tts_no_engine
+                                TtsError.KOREAN_UNAVAILABLE -> R.string.tts_korean_unavailable
+                                TtsError.INITIALIZATION, TtsError.PLAYBACK -> R.string.tts_error
+                            }
+                            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+                            lastTtsError = event.reason
+                        }
+                        finishSpeech()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun finishSpeech() {
+        activeSpeech = null
+        showVoiceState(if (page == Page.CONVERSATION) VoiceState.READY else VoiceState.STOPPED)
+        render()
+    }
+
+    private fun syncVoiceInput() {
         if (voiceTurnActive || voiceRestart != null || permissionRequestInFlight) return
         if (voiceState == VoiceState.PROCESSING) {
             showVoiceState(VoiceState.READY)
@@ -207,7 +265,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onVoiceEvent(event: VoiceRecognitionEvent) {
-        if (!voiceTurnActive || !isVoiceScreenActive()) return
+        if (!voiceTurnActive || !isCurrentScreen(Page.CONVERSATION)) return
         when (event) {
             VoiceRecognitionEvent.Listening -> showVoiceState(VoiceState.LISTENING)
             VoiceRecognitionEvent.Processing -> showVoiceState(VoiceState.PROCESSING)
@@ -216,7 +274,7 @@ class MainActivity : AppCompatActivity() {
                 if (submitOrder(event.text)) {
                     transcript?.followAcceptedVoiceInput()
                 } else {
-                    syncVoiceInput()
+                    syncAudio()
                 }
             }
             is VoiceRecognitionEvent.Error -> {
@@ -237,7 +295,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun submitOrder(text: String): Boolean {
-        if (text.isBlank() || !isVoiceScreenActive() || session.isProcessingInput) return false
+        if (text.isBlank() || !isCurrentScreen(Page.CONVERSATION) || session.isProcessingInput ||
+            activeSpeech != null || session.hasSpokenResponses
+        ) return false
         cancelVoiceTurn()
         consecutiveVoiceErrors = 0
         showVoiceState(VoiceState.PROCESSING)
@@ -248,9 +308,9 @@ class MainActivity : AppCompatActivity() {
         voiceRestart = lifecycleScope.launch {
             delay(delayMillis)
             voiceRestart = null
-            if (!isVoiceScreenActive()) return@launch
+            if (!isCurrentScreen(Page.CONVERSATION)) return@launch
             showVoiceState(VoiceState.READY)
-            syncVoiceInput()
+            syncAudio()
         }
     }
 
@@ -261,8 +321,10 @@ class MainActivity : AppCompatActivity() {
         voice.stopListening()
     }
 
-    private fun stopVoiceInput() {
+    private fun stopAudio() {
         cancelVoiceTurn()
+        activeSpeech = null
+        tts.stop()
         consecutiveVoiceErrors = 0
         showVoiceState(VoiceState.STOPPED)
     }

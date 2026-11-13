@@ -1,8 +1,8 @@
 # MALLO 통합 대화 검증
 
-Android Studio에서 `app`을 실행하고 **음성으로 주문하기**를 누릅니다. Android가 마이크 권한을 요청하면 허용하고, 하단에 **듣는 중…**이 표시될 때 아래 문장을 말합니다. 응답 뒤 음성 인식이 자동으로 재개됩니다.
+Android Studio에서 `app`을 실행하고 **음성으로 주문하기**를 누릅니다. 메뉴와 함께 표시되는 “무엇을 주문하시겠어요?”가 한 번 재생됩니다. Android가 마이크 권한을 요청하면 허용하고, 하단에 **듣는 중…**이 표시될 때 아래 문장을 말합니다. AI 안내가 재생될 때 하단에 **말로가 안내하고 있습니다.**가 표시되고, 마지막 안내가 끝나면 음성 인식이 자동으로 재개됩니다.
 
-마이크 없이 주문 로직을 검증할 때는 `debug` 앱의 주문 화면을 열고 `./tools/mallo-test-input.ps1 -Text "아아 두 잔 주세요"`를 실행합니다. 문장은 즉시 주문 세션에 제출됩니다.
+마이크 없이 주문 로직을 검증할 때는 `debug` 앱의 주문 화면을 열고 안내가 끝난 뒤 `./tools/mallo-test-input.ps1 -Text "아아 두 잔 주세요"`를 실행합니다.
 
 | 순서 | 입력 또는 동작 | 확인할 결과 |
 |---|---|---|
@@ -27,4 +27,5 @@ Windows에서 상태 관리, Fake NLU와 JSON 어댑터 테스트는 다음 명�
 - `AndroidSpeechRecognizerController`는 `VoiceController`를 구현하고 최종 인식 텍스트와 상태를 `VoiceRecognitionEvent`로 전달합니다. 최종 텍스트, 카드 버튼과 디버그 입력은 `KioskSessionViewModel.submit(text)`를 거쳐 `ConversationManager.handleUserInput(text)`로 들어갑니다.
 - `NluEngine.analyze(text, context)`에 현재 세션 ID, 질문 대상, 대화, 임시 주문과 장바구니 항목 ID를 전달합니다. `LlmNluEngine`을 사용하려면 실제 모델 호출을 구현하는 `LlmEngine`과 배포된 v9 형식에 맞춘 `FunctionCallAdapter`를 주입합니다.
 - 현재 테스트 JSON의 한 예는 `{"function":"change_quantity","target_id":"<cart item ID>","quantity":2}`입니다. 앱이 같은 ID의 항목을 검증하고, 수량은 사용자가 확인할 때 반영합니다. 가격과 판매 옵션은 `MenuCatalog`에서 결정합니다.
-- `AiResponseOutput`은 대화에 추가된 AI 응답을 전달합니다. 추후 여기에서 TTS를 시작하고, 음성 상태를 관리하는 쪽에서 마이크를 제어할 수 있습니다.
+- `AiResponseOutput`은 대화에 새로 추가된 AI 응답을 전달합니다. `KioskSessionViewModel`이 이를 발화 대기열에 넣고 `MainActivity`가 화면 표시 후 `TtsEngine`에 한 문장씩 전달합니다. QCS6490에서 별도 음성 엔진을 사용하려면 `MainActivity`의 `TtsEngine` 생성 위치에 새 구현체를 연결합니다.
+- `adb logcat -s MalloTts`에서 한국어 음성 이름, 로캘, 품질, 설치 상태, 네트워크 필요 여부와 발화 시작·종료를 확인할 수 있습니다. 오프라인 검증은 기기의 Wi-Fi와 모바일 데이터를 끈 상태에서 새 주문을 열어 확인합니다.

@@ -30,7 +30,21 @@ fun interface NluEngine { suspend fun analyze(text: String, context: NluContext)
 fun interface LlmEngine { suspend fun functionCallJson(text: String, context: NluContext): String }
 fun interface AiResponseOutput { fun onResponse(message: ChatMessage) }
 interface VoiceController { fun startListening(); fun stopListening(); fun release() }
-interface TtsEngine { fun speak(text: String, onComplete: () -> Unit); fun release() }
+interface TtsEngine {
+    val isInitializing: Boolean
+    fun speak(text: String, onEvent: (TtsPlaybackEvent) -> Unit)
+    fun stop()
+    fun release()
+}
+
+sealed interface TtsPlaybackEvent {
+    data object Started : TtsPlaybackEvent
+    data object Completed : TtsPlaybackEvent
+    data object Stopped : TtsPlaybackEvent
+    data class Error(val reason: TtsError) : TtsPlaybackEvent
+}
+
+enum class TtsError { NO_ENGINE, KOREAN_UNAVAILABLE, INITIALIZATION, PLAYBACK }
 
 class FakeNluEngine : NluEngine {
     override suspend fun analyze(text: String, context: NluContext): NluResult =
