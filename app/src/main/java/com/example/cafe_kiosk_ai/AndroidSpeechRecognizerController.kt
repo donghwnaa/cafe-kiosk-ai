@@ -8,6 +8,7 @@ import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import android.util.Log
 import androidx.annotation.MainThread
 
 internal sealed interface VoiceRecognitionEvent {
@@ -84,12 +85,14 @@ internal class AndroidSpeechRecognizerController(
         override fun onEndOfSpeech() = report(VoiceRecognitionEvent.Processing)
 
         override fun onResults(results: Bundle?) {
+            if (currentTurn !== this) return
             val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                ?.firstOrNull()?.trim().orEmpty()
-            val event = if (text.isEmpty()) {
+                ?.firstOrNull().orEmpty()
+            if (BuildConfig.DEBUG) Log.d("MalloStt", "Android SpeechRecognizer final: $text")
+            val event = if (text.isBlank()) {
                 VoiceRecognitionEvent.Error(VoiceRecognitionError.NO_SPEECH)
             } else {
-                VoiceRecognitionEvent.Result(text)
+                VoiceRecognitionEvent.Result(text.trim())
             }
             finish(event)
         }

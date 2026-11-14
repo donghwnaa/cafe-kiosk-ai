@@ -31,7 +31,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var screenContainer: FrameLayout
     private lateinit var session: KioskSessionViewModel
-    private lateinit var voice: VoiceController
+    private var voice: VoiceController? = null
     private lateinit var tts: TtsEngine
     private val testTextInput = TestTextInput()
     private var page: Page? = null
@@ -60,7 +60,6 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         screenContainer = findViewById(R.id.screen_container)
         session = ViewModelProvider(this)[KioskSessionViewModel::class.java]
-        voice = AndroidSpeechRecognizerController(this, ::onVoiceEvent)
         tts = AndroidTtsEngine(this)
         savedChatOffset = savedInstanceState?.getInt("chatOffset", -1)?.takeIf { it >= 0 }
         permissionRequested = savedInstanceState?.getBoolean("voicePermissionRequested") == true
@@ -110,7 +109,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         testTextInput.detach()
-        voice.release()
+        releaseVoice()
         tts.release()
         super.onDestroy()
     }
@@ -261,7 +260,8 @@ class MainActivity : AppCompatActivity() {
         if (voiceState == VoiceState.ERROR) return
         showVoiceState(VoiceState.READY)
         voiceTurnActive = true
-        voice.startListening()
+        val controller = voice ?: createVoiceController(this, ::onVoiceEvent).also { voice = it }
+        controller.startListening()
     }
 
     private fun onVoiceEvent(event: VoiceRecognitionEvent) {
@@ -318,11 +318,17 @@ class MainActivity : AppCompatActivity() {
         voiceTurnActive = false
         voiceRestart?.cancel()
         voiceRestart = null
-        voice.stopListening()
+        voice?.stopListening()
+    }
+
+    private fun releaseVoice() {
+        cancelVoiceTurn()
+        voice?.release()
+        voice = null
     }
 
     private fun stopAudio() {
-        cancelVoiceTurn()
+        releaseVoice()
         activeSpeech = null
         tts.stop()
         consecutiveVoiceErrors = 0

@@ -3,6 +3,28 @@ plugins {
     alias(libs.plugins.kotlin.android)
 }
 
+val sttEngine = providers.gradleProperty("malloStt").orElse("sensevoice").get()
+require(sttEngine in setOf("android", "sensevoice")) {
+    "malloStt must be android or sensevoice."
+}
+val useSenseVoice = sttEngine == "sensevoice"
+val offlineStt = layout.projectDirectory.dir("offline-stt")
+val sherpaAar = offlineStt.file("sherpa-onnx-2.0.1.aar")
+
+if (useSenseVoice) {
+    val requiredFiles = listOf(
+        sherpaAar,
+        offlineStt.file("assets/stt/model.int8.onnx"),
+        offlineStt.file("assets/stt/tokens.txt"),
+        offlineStt.file("assets/stt/silero_vad.onnx")
+    )
+    val missing = requiredFiles.filterNot { it.asFile.isFile && it.asFile.length() > 0 }
+    check(missing.isEmpty()) {
+        "Run tools/setup-offline-stt.ps1, or set malloStt=android to use SpeechRecognizer. " +
+            "Missing: ${missing.joinToString { it.asFile.name }}"
+    }
+}
+
 android {
     namespace = "com.example.cafe_kiosk_ai"
     compileSdk {
@@ -35,10 +57,18 @@ android {
     kotlinOptions {
         jvmTarget = "11"
     }
-    buildFeatures { viewBinding = true }
+    buildFeatures {
+        viewBinding = true
+        buildConfig = true
+    }
+    sourceSets.getByName("main") {
+        java.srcDir(if (useSenseVoice) "src/sensevoice/java" else "src/platformStt/java")
+        if (useSenseVoice) assets.srcDir(offlineStt.dir("assets"))
+    }
 }
 
 dependencies {
+    if (useSenseVoice) implementation(files(sherpaAar))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
