@@ -2,20 +2,19 @@
 
 ## 설치와 빌드
 
-Windows에서 저장소 루트에 있는 PowerShell 스크립트를 실행합니다. 공식 다운로드의 SHA-256을 확인한 후 AAR과 모델을 Git에서 제외된 `app/offline-stt/`에 설치합니다. 압축 파일을 팀 내부 저장소에서 받아 설치하려면 아래 파일 세 개를 `app/offline-stt/downloads/`에 넣고 같은 스크립트를 실행합니다.
+브랜치를 받은 뒤 Android Studio에서 **Gradle Sync → Run**을 누릅니다. 첫 빌드에서 Gradle이 약 213 MB의 공식 파일을 내려받아 SHA-256을 확인하고 APK에 포함합니다. 빌드 PC에서 첫 다운로드를 할 때 인터넷에 연결하고 Gradle 오프라인 모드를 끕니다. 이후에는 Git에서 제외된 `app/offline-stt/downloads/`의 캐시를 사용합니다. 빌드 PC가 GitHub 다운로드에 접근할 수 없다면 아래 파일 세 개를 해당 폴더에 넣고 빌드합니다.
 
 ```powershell
-.\tools\setup-offline-stt.ps1
 .\gradlew.bat :app:assembleDebug :app:testDebugUnitTest
 ```
 
-이 실험 브랜치의 기본 엔진은 SenseVoice입니다. 모델을 설치한 뒤 Android Studio에서 Gradle Sync를 하고 일반 Run을 누릅니다. 로컬 Gradle 사용자 설정에 `malloStt=android`가 있으면 지워야 기본값이 적용됩니다. 비교용 SpeechRecognizer는 `-PmalloStt=android`로 빌드합니다. 두 빌드의 앱 ID는 동일하므로 APK를 교체해서 비교할 수 있습니다.
+모델만 미리 준비하려면 `./tools/setup-offline-stt.ps1` 또는 `:app:prepareOfflineStt`를 실행합니다. 이 브랜치의 기본 엔진은 SenseVoice입니다. 로컬 Gradle 사용자 설정에 `malloStt=android`가 있으면 지워야 기본값이 적용됩니다. 비교용 SpeechRecognizer는 `-PmalloStt=android`로 빌드합니다. 두 빌드의 앱 ID는 동일하므로 APK를 교체해서 비교할 수 있습니다.
 
-| 공식 다운로드 | 크기와 설치 위치 |
+| 공식 다운로드 | 크기와 내용 |
 | --- | --- |
-| [sherpa-onnx-2.0.1.aar](https://github.com/k2-fsa/sherpa-onnx/releases/download/v2.0.1/sherpa-onnx-2.0.1.aar) | 49,441,341 B. `app/offline-stt/sherpa-onnx-2.0.1.aar` |
-| [sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2](https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2) | 163,002,883 B. `model.int8.onnx` 239,233,841 B와 `tokens.txt` 315,894 B를 `app/offline-stt/assets/stt/`에 둡니다. 별도 모델 설정 파일은 필요하지 않습니다. |
-| [silero_vad.onnx](https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx) | 643,854 B. `app/offline-stt/assets/stt/silero_vad.onnx`. k2-fsa의 Silero v4 계열 16 kHz 전용 export입니다. |
+| [sherpa-onnx-2.0.1.aar](https://github.com/k2-fsa/sherpa-onnx/releases/download/v2.0.1/sherpa-onnx-2.0.1.aar) | 49,441,341 B. Kotlin API와 Android JNI 라이브러리입니다. |
+| [sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2](https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2) | 163,002,883 B. `model.int8.onnx` 239,233,841 B와 `tokens.txt` 315,894 B를 포함합니다. |
+| [silero_vad.onnx](https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx) | 643,854 B. k2-fsa의 Silero v4 계열 16 kHz 전용 export입니다. |
 
 공식 AAR은 Android API 21 이상이며 `x86_64`, `arm64-v8a`, `x86`, `armeabi-v7a` JNI를 포함합니다. MALLO는 minSdk 24, compile/target SDK 36, AGP 8.13.2, Gradle 8.13, Kotlin 2.0.21을 사용합니다. Android Studio JBR 21로 빌드했으며, 공식 AAR을 사용하므로 NDK 설치가 필요하지 않습니다. Pixel 5 AVD에는 `x86_64`, QCS6490에는 `arm64-v8a` 라이브러리가 로드됩니다. 두 ABI의 ELF LOAD와 APK의 16 KiB ZIP 정렬을 확인했습니다.
 
