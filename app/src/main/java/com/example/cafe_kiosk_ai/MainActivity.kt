@@ -24,7 +24,7 @@ import kotlinx.coroutines.launch
 class MainActivity : AppCompatActivity() {
     private enum class Page { START, CONVERSATION, PAYMENT }
     private enum class VoiceState(@StringRes val message: Int) {
-        READY(R.string.voice_ready), LISTENING(R.string.voice_listening),
+        PREPARING(R.string.voice_ready), LISTENING(R.string.voice_listening),
         PROCESSING(R.string.voice_processing), INITIALIZING_TTS(R.string.voice_initializing_tts),
         SPEAKING(R.string.voice_speaking), ERROR(R.string.voice_error), STOPPED(R.string.voice_stopped)
     }
@@ -41,11 +41,13 @@ class MainActivity : AppCompatActivity() {
     private var foreground = false
     private var permissionRequested = false
     private var permissionRequestInFlight = false
-    private var voiceTurnActive = false
+    private val voiceTurn = VoiceTurn()
+    private var voicePreparation: Job? = null
     private var voiceState = VoiceState.STOPPED
     private var voiceRestart: Job? = null
     private var consecutiveVoiceErrors = 0
-    private var activeSpeech: Any? = null
+    private var activeSpeech: Long? = null
+    private var speechSequence = 0L
     private var lastTtsError: TtsError? = null
 
     private val requestPermissionLauncher =
@@ -168,7 +170,7 @@ class MainActivity : AppCompatActivity() {
                 screen.findViewById<View>(R.id.voice_retry).setOnClickListener {
                     consecutiveVoiceErrors = 0
                     permissionRequested = false
-                    showVoiceState(VoiceState.READY)
+                    showVoiceState(VoiceState.PREPARING)
                     syncAudio()
                 }
             }
@@ -205,18 +207,23 @@ class MainActivity : AppCompatActivity() {
 
     private fun speakResponse(text: String, destination: Page) {
         cancelVoiceTurn()
-        val speech = Any()
+        val speech = ++speechSequence
         activeSpeech = speech
         showVoiceState(if (tts.isInitializing) VoiceState.INITIALIZING_TTS else VoiceState.SPEAKING)
         tts.speak(text) { event ->
-            if (activeSpeech === speech && isCurrentScreen(destination)) {
+            if (activeSpeech == speech && isCurrentScreen(destination)) {
                 when (event) {
-                    TtsPlaybackEvent.Started -> showVoiceState(VoiceState.SPEAKING)
+                    TtsPlaybackEvent.Started -> {
+                        showVoiceState(VoiceState.SPEAKING)
+                        trace(speech, "TTS_STARTED")
+                    }
                     TtsPlaybackEvent.Completed, TtsPlaybackEvent.Stopped -> {
+                        trace(speech, if (event == TtsPlaybackEvent.Completed) "TTS_COMPLETED" else "TTS_STOPPED")
                         lastTtsError = null
                         finishSpeech()
                     }
                     is TtsPlaybackEvent.Error -> {
+                        trace(speech, "TTS_ERROR", "reason=${event.reason}")
                         if (lastTtsError != event.reason) {
                             val message = when (event.reason) {
                                 TtsError.NO_ENGINE -> R.string.tts_no_engine
@@ -235,42 +242,55 @@ class MainActivity : AppCompatActivity() {
 
     private fun finishSpeech() {
         activeSpeech = null
-        showVoiceState(if (page == Page.CONVERSATION) VoiceState.READY else VoiceState.STOPPED)
-        render()
+        if (page != Page.CONVERSATION) showVoiceState(VoiceState.STOPPED)
+        syncAudio()
     }
 
     private fun syncVoiceInput() {
-        if (voiceTurnActive || voiceRestart != null || permissionRequestInFlight) return
-        if (voiceState == VoiceState.PROCESSING) {
-            showVoiceState(VoiceState.READY)
-            restartVoiceAfter(400L)
-            return
-        }
+        if (voiceTurn.id != null || voiceRestart != null || permissionRequestInFlight) return
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             if (permissionRequested) {
                 showVoiceState(VoiceState.ERROR, R.string.voice_permission_required)
             } else {
                 permissionRequested = true
                 permissionRequestInFlight = true
-                showVoiceState(VoiceState.READY)
+                showVoiceState(VoiceState.PREPARING)
                 requestPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
             }
             return
         }
         if (voiceState == VoiceState.ERROR) return
-        showVoiceState(VoiceState.READY)
-        voiceTurnActive = true
-        val controller = voice ?: createVoiceController(this, ::onVoiceEvent).also { voice = it }
-        controller.startListening()
+        showVoiceState(VoiceState.PREPARING)
+        val turn = voiceTurn.start()
+        trace(turn, "STT_PREPARING")
+        val controller = voice ?: createVoiceController(this, displayedSessionId, ::onVoiceEvent).also { voice = it }
+        voicePreparation = lifecycleScope.launch {
+            delay(12_000L)
+            if (voiceTurn.id != turn || voiceTurn.phase != VoiceTurn.Phase.PREPARING) return@launch
+            controller.stopListening()
+            onVoiceEvent(turn, VoiceRecognitionEvent.Error(VoiceRecognitionError.PREPARATION))
+        }
+        trace(turn, "STT_START_REQUESTED")
+        controller.startListening(turn)
     }
 
-    private fun onVoiceEvent(event: VoiceRecognitionEvent) {
-        if (!voiceTurnActive || !isCurrentScreen(Page.CONVERSATION)) return
+    private fun onVoiceEvent(turn: Long, event: VoiceRecognitionEvent) {
+        if (voiceTurn.id != turn || !isCurrentScreen(Page.CONVERSATION)) return
         when (event) {
-            VoiceRecognitionEvent.Listening -> showVoiceState(VoiceState.LISTENING)
-            VoiceRecognitionEvent.Processing -> showVoiceState(VoiceState.PROCESSING)
+            VoiceRecognitionEvent.Listening -> if (voiceTurn.ready(turn)) {
+                voicePreparation?.cancel()
+                voicePreparation = null
+                showVoiceState(VoiceState.LISTENING)
+                trace(turn, "STT_READY")
+            }
+            VoiceRecognitionEvent.Processing -> if (voiceTurn.processing(turn)) showVoiceState(VoiceState.PROCESSING)
             is VoiceRecognitionEvent.Result -> {
-                voiceTurnActive = false
+                if (voiceTurn.phase == VoiceTurn.Phase.PREPARING) {
+                    onVoiceEvent(turn, VoiceRecognitionEvent.Error(VoiceRecognitionError.PREPARATION))
+                    return
+                }
+                trace(turn, "STT_RESULT")
+                cancelVoiceTurn()
                 if (submitOrder(event.text)) {
                     transcript?.followAcceptedVoiceInput()
                 } else {
@@ -278,16 +298,22 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             is VoiceRecognitionEvent.Error -> {
-                voiceTurnActive = false
+                val preparing = voiceTurn.phase == VoiceTurn.Phase.PREPARING
+                trace(turn, "STT_ERROR", "reason=${event.reason}")
+                cancelVoiceTurn()
                 if (event.reason.canRetry && consecutiveVoiceErrors < 3) {
-                    restartVoiceAfter(1_000L shl consecutiveVoiceErrors)
+                    restartVoiceAfter(turn, if (preparing) 200L shl consecutiveVoiceErrors else 1_000L shl consecutiveVoiceErrors)
                     consecutiveVoiceErrors++
+                    if (preparing) {
+                        showVoiceState(VoiceState.PREPARING)
+                        return
+                    }
                 }
                 val message = when (event.reason) {
-                    VoiceRecognitionError.NO_SPEECH -> R.string.voice_no_speech
+                    VoiceRecognitionError.NO_SPEECH, VoiceRecognitionError.NO_RESULT -> R.string.voice_no_speech
                     VoiceRecognitionError.PERMISSION -> R.string.voice_permission_required
                     VoiceRecognitionError.UNAVAILABLE -> R.string.voice_unavailable
-                    VoiceRecognitionError.TEMPORARY, VoiceRecognitionError.SERVICE -> R.string.voice_error
+                    else -> R.string.voice_error
                 }
                 showVoiceState(VoiceState.ERROR, message)
             }
@@ -304,22 +330,30 @@ class MainActivity : AppCompatActivity() {
         return session.submit(text)
     }
 
-    private fun restartVoiceAfter(delayMillis: Long) {
+    private fun restartVoiceAfter(turn: Long, delayMillis: Long) {
         voiceRestart = lifecycleScope.launch {
             delay(delayMillis)
             voiceRestart = null
             if (!isCurrentScreen(Page.CONVERSATION)) return@launch
-            showVoiceState(VoiceState.READY)
+            trace(turn, "STT_RESTART")
+            showVoiceState(VoiceState.PREPARING)
             syncAudio()
         }
     }
 
     private fun cancelVoiceTurn() {
-        voiceTurnActive = false
+        val turn = voiceTurn.id
+        voiceTurn.stop()
+        voicePreparation?.cancel()
+        voicePreparation = null
         voiceRestart?.cancel()
         voiceRestart = null
         voice?.stopListening()
+        turn?.let { trace(it, "STT_STOPPED") }
     }
+
+    private fun trace(turn: Long, event: String, detail: String = "") =
+        audioLog(voiceEngineName, displayedSessionId, turn, voiceState.name, event, detail)
 
     private fun releaseVoice() {
         cancelVoiceTurn()

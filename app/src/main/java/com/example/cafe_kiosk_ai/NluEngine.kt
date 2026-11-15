@@ -29,7 +29,7 @@ data class NluContext(
 fun interface NluEngine { suspend fun analyze(text: String, context: NluContext): NluResult }
 fun interface LlmEngine { suspend fun functionCallJson(text: String, context: NluContext): String }
 fun interface AiResponseOutput { fun onResponse(message: ChatMessage) }
-interface VoiceController { fun startListening(); fun stopListening(); fun release() }
+interface VoiceController { fun startListening(turnId: Long); fun stopListening(); fun release() }
 interface TtsEngine {
     val isInitializing: Boolean
     fun speak(text: String, onEvent: (TtsPlaybackEvent) -> Unit)

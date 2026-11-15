@@ -39,8 +39,9 @@ internal data class OfflineSttConfig(
 @MainThread
 internal class SherpaOfflineSttController(
     context: Context,
+    private val sessionId: String?,
     private val config: OfflineSttConfig = OfflineSttConfig(),
-    private val onEvent: (VoiceRecognitionEvent) -> Unit
+    private val onEvent: (Long, VoiceRecognitionEvent) -> Unit
 ) : VoiceController {
     private val assets = context.applicationContext.assets
     private val main = Handler(Looper.getMainLooper())
@@ -51,9 +52,9 @@ internal class SherpaOfflineSttController(
     private var vad: Vad? = null
     private var recognizer: OfflineRecognizer? = null
 
-    override fun startListening() {
+    override fun startListening(turnId: Long) {
         if (released || currentTurn != null) return
-        val turn = Turn()
+        val turn = Turn(turnId)
         currentTurn = turn
         worker.execute { recognize(turn) }
     }
@@ -79,8 +80,8 @@ internal class SherpaOfflineSttController(
     private fun recognize(turn: Turn) {
         if (turn.cancelled) return
         val result = try {
-            val detector = vad ?: createVad().also { vad = it }
-            val decoder = recognizer ?: createRecognizer().also { recognizer = it }
+            val detector = vad ?: createVad().also { vad = it; trace(turn, "PREPARING", "VAD_INITIALIZED") }
+            val decoder = recognizer ?: createRecognizer().also { recognizer = it; trace(turn, "PREPARING", "STT_MODEL_INITIALIZED") }
             if (turn.cancelled) return
             detector.reset()
             val samples = capture(turn, detector) ?: return
@@ -97,6 +98,10 @@ internal class SherpaOfflineSttController(
         } catch (error: LinkageError) {
             Log.e(TAG, "Could not load sherpa-onnx JNI", error)
             VoiceRecognitionEvent.Error(VoiceRecognitionError.UNAVAILABLE)
+        } catch (error: AudioInputException) {
+            if (turn.cancelled) return
+            trace(turn, if (turn.receivedAudio) "LISTENING" else "PREPARING", "AUDIO_INPUT_ERROR", error.message.orEmpty())
+            VoiceRecognitionEvent.Error(if (turn.receivedAudio) VoiceRecognitionError.AUDIO else VoiceRecognitionError.PREPARATION)
         } catch (error: RuntimeException) {
             if (turn.cancelled) return
             Log.e(TAG, "Offline recognition failed", error)
@@ -110,15 +115,14 @@ internal class SherpaOfflineSttController(
         val channels = AudioFormat.CHANNEL_IN_MONO
         val format = AudioFormat.ENCODING_PCM_16BIT
         val minBufferBytes = AudioRecord.getMinBufferSize(SAMPLE_RATE, channels, format)
-        check(minBufferBytes > 0) { "16 kHz mono PCM input is unavailable ($minBufferBytes)" }
+        if (minBufferBytes <= 0) throw AudioInputException("16 kHz mono PCM unavailable ($minBufferBytes)")
         val record = AudioRecord(
             config.audioSource, SAMPLE_RATE, channels, format, maxOf(minBufferBytes, WINDOW_SIZE * 4)
         )
         try {
-            check(record.state == AudioRecord.STATE_INITIALIZED) { "Could not initialize AudioRecord" }
+            if (record.state != AudioRecord.STATE_INITIALIZED) throw AudioInputException("AudioRecord initialization failed")
             if (!turn.startRecording(record)) return null
-            Log.d(TAG, "Offline microphone started")
-            post(turn, VoiceRecognitionEvent.Listening)
+            trace(turn, "PREPARING", "AUDIO_RECORDING_STARTED")
             return readUtterance(turn, record, detector)
         } finally {
             turn.releaseRecording(record)
@@ -136,22 +140,27 @@ internal class SherpaOfflineSttController(
         while (!turn.cancelled) {
             val count = record.read(pcm, filled, pcm.size - filled, AudioRecord.READ_BLOCKING)
             if (turn.cancelled) return null
-            check(count > 0) { "AudioRecord read failed ($count)" }
+            if (count <= 0) throw AudioInputException("AudioRecord read failed ($count)")
+            if (!turn.receivedAudio) {
+                turn.receivedAudio = true
+                trace(turn, "PREPARING", "FIRST_AUDIO_BUFFER_RECEIVED")
+                post(turn, VoiceRecognitionEvent.Listening)
+            }
             filled += count
             if (filled < pcm.size) continue
             filled = 0
             for (i in pcm.indices) window[i] = pcm[i] / 32768.0f
             detector.acceptWaveform(window)
             received += window.size
-            if (!detector.empty()) {
-                Log.d(TAG, "Silero endpoint after silence")
-                return detector.front().samples
-            }
             if (speechStart == 0 && detector.isSpeechDetected()) {
                 speechStart = received
-                Log.d(TAG, "Silero speech detected")
+                trace(turn, "LISTENING", "VAD_SPEECH_DETECTED")
             }
-            if (speechStart == 0 && received >= idleLimit) return FloatArray(0)
+            if (!detector.empty()) return detector.front().samples
+            if (speechStart == 0 && received >= idleLimit) {
+                trace(turn, "LISTENING", "VAD_NO_SEGMENT")
+                return FloatArray(0)
+            }
             if (speechStart != 0 && received - speechStart >= speechLimit) {
                 // sherpa's maxSpeechDuration changes VAD sensitivity. Flush also caps continuous speech.
                 Log.d(TAG, "Silero endpoint at speech limit")
@@ -175,7 +184,7 @@ internal class SherpaOfflineSttController(
         val elapsed = SystemClock.elapsedRealtime() - started
         Log.d(TAG, "SenseVoice decode: ${samples.size * 1000L / SAMPLE_RATE} ms audio, $elapsed ms CPU inference")
         return if (text.isBlank()) {
-            VoiceRecognitionEvent.Error(VoiceRecognitionError.NO_SPEECH)
+            VoiceRecognitionEvent.Error(VoiceRecognitionError.NO_RESULT)
         } else {
             VoiceRecognitionEvent.Result(text)
         }
@@ -185,10 +194,7 @@ internal class SherpaOfflineSttController(
         main.post deliver@{
             if (currentTurn !== turn) return@deliver
             if (terminal) currentTurn = null
-            if (BuildConfig.DEBUG && event is VoiceRecognitionEvent.Result) {
-                Log.d(TAG, "SenseVoice final: ${event.text}")
-            }
-            onEvent(event)
+            onEvent(turn.id, event)
         }
     }
 
@@ -224,7 +230,13 @@ internal class SherpaOfflineSttController(
         )
     )
 
-    private class Turn {
+    private fun trace(turn: Turn, state: String, event: String, detail: String = "") =
+        audioLog(voiceEngineName, sessionId, turn.id, state, event, detail)
+
+    private class AudioInputException(message: String) : RuntimeException(message)
+
+    private class Turn(val id: Long) {
+        var receivedAudio = false
         @Volatile
         var cancelled = false
             private set
@@ -233,9 +245,13 @@ internal class SherpaOfflineSttController(
         @Synchronized
         fun startRecording(record: AudioRecord): Boolean {
             if (cancelled) return false
-            record.startRecording()
+            try {
+                record.startRecording()
+            } catch (error: IllegalStateException) {
+                throw AudioInputException("AudioRecord refused to start")
+            }
             recording = record
-            check(record.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "Microphone did not start" }
+            if (record.recordingState != AudioRecord.RECORDSTATE_RECORDING) throw AudioInputException("Microphone did not start")
             return true
         }
 

@@ -4,5 +4,8 @@ import android.content.Context
 
 internal fun createVoiceController(
     context: Context,
-    onEvent: (VoiceRecognitionEvent) -> Unit
-): VoiceController = SherpaOfflineSttController(context, onEvent = onEvent)
+    sessionId: String?,
+    onEvent: (Long, VoiceRecognitionEvent) -> Unit
+): VoiceController = SherpaOfflineSttController(context, sessionId, onEvent = onEvent)
+
+internal const val voiceEngineName = "SenseVoice"

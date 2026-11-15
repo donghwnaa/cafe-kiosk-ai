@@ -57,3 +57,14 @@ Windows에서 로컬 Microsoft Heami 합성 WAV로 공식 VAD + ASR 도구를 �
 같은 오프라인 AVD에서 Android SpeechRecognizer 빌드는 안내 TTS 뒤에 ‘이 기기에서 한국어 음성 인식을 사용할 수 없습니다.’를 표시했습니다. 따라서 두 엔진의 정확도와 발화 종료 시간을 같은 조건으로 수치화할 수 없었습니다. 가상 마이크 재생 중 Windows QEMU가 종료되는 문제가 있었고, `-qt-hide-window -audio none`으로 부팅한 AVD에서 SenseVoice 음원 테스트를 수행했습니다.
 
 QCS6490에서는 arm64 APK 설치와 실제 마이크 입력, 고령 화자의 느린 발화와 카페 소음, 스피커 재유입, 첫 모델 로딩 시간, 발화 후 응답 시간, 최대 메모리와 반복 주문 시 발열을 확인합니다.
+## TTS 이후 최초 발화 수동 검증
+
+`gradlew.bat assembleDebug`로 기본 SenseVoice 빌드를, `gradlew.bat -PmalloStt=android assembleDebug`로 Android SpeechRecognizer 빌드를 만듭니다. 같은 앱 ID를 사용하므로 각 빌드를 설치해 순서대로 확인합니다. 일반 Android 기기와 실제 배포 대상 Qualcomm 단말에서 반복합니다.
+
+1. `adb logcat -v time -s MalloAudio:D MalloStt:D MalloTts:D`를 실행합니다. 테스트에 사용할 TTS 엔진과 단말, OS 버전을 기록합니다.
+2. 주문 화면에 처음 진입하고 ‘듣는 중…’이 나타나는 즉시 “아메리카노 두 잔 주세요”라고 말합니다. 온도 질문 후 “차가운 걸로 주세요”, 크기 질문 후 “큰 걸로 주세요”라고 답합니다. 각 턴에서 화면과 주문 결과가 일치하는지 확인합니다.
+3. “맞아요”로 상품을 확정한 뒤 추가 주문과 긴 안내 뒤의 답변을 확인합니다. “큰 걸로” 같은 짧은 발화도 같은 방법으로 확인합니다. 지원하는 기기에서 마이크 차단 및 해제, 음성이 없는 경우, 한국어 TTS를 사용할 수 없는 경우도 확인합니다.
+4. TTS 또는 STT 준비·인식 중 홈으로 이동하고 새 주문을 시작합니다. 결제로 이동하고 다시 돌아오는 경우도 확인합니다. 이전 턴에서 주문이 추가되거나 인식 상태가 바뀌는지 로그의 `session`과 `turn`으로 확인합니다.
+5. 엔진별로 20~30회 반복해 첫 시도 성공, 준비 중 재시도, 준비 후 무음 또는 결과 없음, 인식 결과 오해석 횟수를 기록합니다. `STT_READY`부터 첫 주문의 `STT_RESULT`까지 같은 턴인지 확인합니다.
+
+정상 전환은 `TTS_COMPLETED` → `STT_PREPARING` → `STT_START_REQUESTED` → `STT_READY` 순서입니다. SenseVoice에서는 실제 `AUDIO_RECORDING_STARTED`와 `FIRST_AUDIO_BUFFER_RECEIVED`가 `STT_READY` 전에 나타나며, `VAD_SPEECH_DETECTED`는 음성을 감지했을 때 기록됩니다. Android SpeechRecognizer의 `STT_READY`는 `onReadyForSpeech`에 대응합니다. `STT_ERROR`에는 준비 오류, 오디오 오류, 서비스 사용 중, 무음, 결과 없음 등을 구분하는 `reason`이 나옵니다.

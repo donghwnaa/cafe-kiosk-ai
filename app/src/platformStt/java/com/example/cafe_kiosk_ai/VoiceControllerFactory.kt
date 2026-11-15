@@ -4,5 +4,8 @@ import android.content.Context
 
 internal fun createVoiceController(
     context: Context,
-    onEvent: (VoiceRecognitionEvent) -> Unit
+    sessionId: String?,
+    onEvent: (Long, VoiceRecognitionEvent) -> Unit
 ): VoiceController = AndroidSpeechRecognizerController(context, onEvent)
+
+internal const val voiceEngineName = "AndroidSpeechRecognizer"

@@ -8,7 +8,6 @@ import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
-import android.util.Log
 import androidx.annotation.MainThread
 
 internal sealed interface VoiceRecognitionEvent {
@@ -18,15 +17,21 @@ internal sealed interface VoiceRecognitionEvent {
     data class Error(val reason: VoiceRecognitionError) : VoiceRecognitionEvent
 }
 
+internal fun audioLog(engine: String, session: String?, turn: Long, state: String, event: String, detail: String = "") {
+    if (BuildConfig.DEBUG) android.util.Log.d("MalloAudio",
+        "$event elapsedMs=${android.os.SystemClock.elapsedRealtime()} session=$session turn=$turn engine=$engine state=$state $detail")
+}
+
 internal enum class VoiceRecognitionError(val canRetry: Boolean) {
-    NO_SPEECH(true), TEMPORARY(true), PERMISSION(false), UNAVAILABLE(false), SERVICE(false)
+    NO_SPEECH(true), NO_RESULT(true), PREPARATION(true), AUDIO(true), BUSY(true), TEMPORARY(true),
+    PERMISSION(false), UNAVAILABLE(false), SERVICE(false)
 }
 
 /** Each start owns a recognizer and listener so callbacks from a stopped turn stay isolated. */
 @MainThread
 internal class AndroidSpeechRecognizerController(
     context: Context,
-    private val onEvent: (VoiceRecognitionEvent) -> Unit
+    private val onEvent: (Long, VoiceRecognitionEvent) -> Unit
 ) : VoiceController {
     private val appContext = context.applicationContext
     private val handler = Handler(Looper.getMainLooper())
@@ -38,14 +43,13 @@ internal class AndroidSpeechRecognizerController(
     private var currentTurn: RecognitionTurn? = null
     private var released = false
 
-    override fun startListening() {
+    override fun startListening(turnId: Long) {
         if (released || currentTurn != null) return
         val error = try {
             if (SpeechRecognizer.isRecognitionAvailable(appContext)) {
-                val turn = RecognitionTurn(SpeechRecognizer.createSpeechRecognizer(appContext))
+                val turn = RecognitionTurn(turnId, SpeechRecognizer.createSpeechRecognizer(appContext))
                 currentTurn = turn
                 turn.recognizer.setRecognitionListener(turn)
-                handler.postDelayed(turn.timeout, 30_000L)
                 turn.recognizer.startListening(intent)
                 null
             } else {
@@ -58,7 +62,7 @@ internal class AndroidSpeechRecognizerController(
         }
         if (error != null) {
             stopListening()
-            onEvent(VoiceRecognitionEvent.Error(error))
+            onEvent(turnId, VoiceRecognitionEvent.Error(error))
         }
     }
 
@@ -77,20 +81,31 @@ internal class AndroidSpeechRecognizerController(
         turn.recognizer.destroy()
     }
 
-    private inner class RecognitionTurn(val recognizer: SpeechRecognizer) : RecognitionListener {
+    private inner class RecognitionTurn(val id: Long, val recognizer: SpeechRecognizer) : RecognitionListener {
+        private var ready = false
         val timeout = Runnable { finish(VoiceRecognitionEvent.Error(VoiceRecognitionError.TEMPORARY)) }
 
-        override fun onReadyForSpeech(params: Bundle?) = report(VoiceRecognitionEvent.Listening)
-        override fun onBeginningOfSpeech() = report(VoiceRecognitionEvent.Listening)
-        override fun onEndOfSpeech() = report(VoiceRecognitionEvent.Processing)
+        override fun onReadyForSpeech(params: Bundle?) {
+            if (currentTurn !== this || ready) return
+            ready = true
+            handler.postDelayed(timeout, 30_000L)
+            report(VoiceRecognitionEvent.Listening)
+        }
+
+        override fun onBeginningOfSpeech() = Unit
+        override fun onEndOfSpeech() {
+            if (currentTurn !== this) return
+            handler.removeCallbacks(timeout)
+            handler.postDelayed(timeout, 15_000L)
+            report(VoiceRecognitionEvent.Processing)
+        }
 
         override fun onResults(results: Bundle?) {
             if (currentTurn !== this) return
             val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 ?.firstOrNull().orEmpty()
-            if (BuildConfig.DEBUG) Log.d("MalloStt", "Android SpeechRecognizer final: $text")
             val event = if (text.isBlank()) {
-                VoiceRecognitionEvent.Error(VoiceRecognitionError.NO_SPEECH)
+                VoiceRecognitionEvent.Error(VoiceRecognitionError.NO_RESULT)
             } else {
                 VoiceRecognitionEvent.Result(text.trim())
             }
@@ -99,12 +114,14 @@ internal class AndroidSpeechRecognizerController(
 
         override fun onError(error: Int) {
             val reason = when (error) {
-                SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> VoiceRecognitionError.NO_SPEECH
+                SpeechRecognizer.ERROR_NO_MATCH -> if (ready) VoiceRecognitionError.NO_RESULT else VoiceRecognitionError.PREPARATION
+                SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> if (ready) VoiceRecognitionError.NO_SPEECH else VoiceRecognitionError.PREPARATION
+                SpeechRecognizer.ERROR_AUDIO -> VoiceRecognitionError.AUDIO
+                SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> VoiceRecognitionError.BUSY
                 SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> VoiceRecognitionError.PERMISSION
                 SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED, SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE ->
                     VoiceRecognitionError.UNAVAILABLE
-                SpeechRecognizer.ERROR_AUDIO, SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT,
-                SpeechRecognizer.ERROR_RECOGNIZER_BUSY, SpeechRecognizer.ERROR_SERVER,
+                SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT, SpeechRecognizer.ERROR_SERVER,
                 SpeechRecognizer.ERROR_SERVER_DISCONNECTED -> VoiceRecognitionError.TEMPORARY
                 else -> VoiceRecognitionError.SERVICE
             }
@@ -117,13 +134,13 @@ internal class AndroidSpeechRecognizerController(
         override fun onEvent(eventType: Int, params: Bundle?) = Unit
 
         private fun report(event: VoiceRecognitionEvent) {
-            if (currentTurn === this) onEvent(event)
+            if (currentTurn === this) onEvent(id, event)
         }
 
         private fun finish(event: VoiceRecognitionEvent) {
             if (currentTurn !== this) return
             closeTurn(this)
-            onEvent(event)
+            onEvent(id, event)
         }
     }
 }
