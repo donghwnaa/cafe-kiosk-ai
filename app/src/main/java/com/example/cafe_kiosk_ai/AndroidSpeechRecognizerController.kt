@@ -11,6 +11,8 @@ import android.speech.SpeechRecognizer
 import androidx.annotation.MainThread
 
 internal sealed interface VoiceRecognitionEvent {
+    data object PreparationStarted : VoiceRecognitionEvent
+    data object AwaitingSpeech : VoiceRecognitionEvent
     data object Listening : VoiceRecognitionEvent
     data object Processing : VoiceRecognitionEvent
     data class Result(val text: String) : VoiceRecognitionEvent
@@ -23,8 +25,8 @@ internal fun audioLog(engine: String, session: String?, turn: Long, state: Strin
 }
 
 internal enum class VoiceRecognitionError(val canRetry: Boolean) {
-    NO_SPEECH(true), NO_RESULT(true), PREPARATION(true), AUDIO(true), BUSY(true), TEMPORARY(true),
-    PERMISSION(false), UNAVAILABLE(false), SERVICE(false)
+    NO_SPEECH(true), NO_RESULT(true), PREPARATION(true), MIC_NO_DATA(true), AUDIO(true), BUSY(true), TEMPORARY(true),
+    MIC_ZERO_SIGNAL(false), MIC_CLEANUP_TIMEOUT(false), PERMISSION(false), UNAVAILABLE(false), SERVICE(false)
 }
 
 /** Each start owns a recognizer and listener so callbacks from a stopped turn stay isolated. */
@@ -45,6 +47,7 @@ internal class AndroidSpeechRecognizerController(
 
     override fun startListening(turnId: Long) {
         if (released || currentTurn != null) return
+        onEvent(turnId, VoiceRecognitionEvent.PreparationStarted)
         val error = try {
             if (SpeechRecognizer.isRecognitionAvailable(appContext)) {
                 val turn = RecognitionTurn(turnId, SpeechRecognizer.createSpeechRecognizer(appContext))

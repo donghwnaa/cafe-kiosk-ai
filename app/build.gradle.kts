@@ -17,6 +17,14 @@ require(sttEngine in setOf("android", "sensevoice")) {
     "malloStt must be android or sensevoice."
 }
 val useSenseVoice = sttEngine == "sensevoice"
+val useOfflineTts = useSenseVoice && providers.gradleProperty("malloOfflineTts").orElse("true").get().toBooleanStrict()
+val prepareOfflineTts = if (useOfflineTts) {
+    tasks.register<PrepareOfflineTts>("prepareOfflineTts") {
+        downloads.set(layout.projectDirectory.dir("offline-tts/downloads"))
+        assets.set(layout.buildDirectory.dir("generated/offline-tts/assets"))
+        offline.set(gradle.startParameter.isOffline)
+    }
+} else null
 val prepareOfflineStt = if (useSenseVoice) {
     tasks.register<PrepareOfflineStt>("prepareOfflineStt") {
         description = "Downloads and verifies the official sherpa-onnx and SenseVoice release files."
@@ -41,6 +49,7 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        manifestPlaceholders["malloBundledTts"] = useOfflineTts.toString()
     }
 
     buildTypes {
@@ -65,12 +74,19 @@ android {
     }
     sourceSets.getByName("main") {
         java.srcDir(if (useSenseVoice) "src/sensevoice/java" else "src/platformStt/java")
+        if (useOfflineTts) java.srcDir("src/offlineTts/java")
     }
 }
 
 if (prepareOfflineStt != null) {
     androidComponents.onVariants { variant ->
         variant.sources.assets?.addGeneratedSourceDirectory(prepareOfflineStt, PrepareOfflineStt::assets)
+    }
+}
+
+if (prepareOfflineTts != null) {
+    androidComponents.onVariants { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(prepareOfflineTts, PrepareOfflineTts::assets)
     }
 }
 
@@ -143,17 +159,62 @@ abstract class PrepareOfflineStt @Inject constructor(
         aarArchive.copyTo(aar.get().asFile, overwrite = true)
     }
 
-    private fun releaseFile(tag: String, name: String, expectedHash: String): File {
-        val file = downloads.file(name).get().asFile
+    private fun releaseFile(tag: String, name: String, expectedHash: String): File =
+        OfflineAudioFiles.verified(downloads.file(name).get().asFile,
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/$tag/$name", expectedHash, offline.get(), logger)
+}
+
+abstract class PrepareOfflineTts @Inject constructor(
+    private val archiveOperations: ArchiveOperations,
+    private val fileSystemOperations: FileSystemOperations
+) : DefaultTask() {
+    @get:LocalState abstract val downloads: DirectoryProperty
+    @get:Input abstract val offline: Property<Boolean>
+    @get:OutputDirectory abstract val assets: DirectoryProperty
+
+    @TaskAction
+    fun prepare() {
+        val model = "sherpa-onnx-supertonic-3-tts-int8-2026-05-11"
+        val archive = OfflineAudioFiles.verified(
+            downloads.file("$model.tar.bz2").get().asFile,
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/$model.tar.bz2",
+            "82fa96f91c4ef8abaae3a14a3f4153facf88bed821d1f7331cec2700f432c427", offline.get(), logger
+        )
+        val licenseName = "Supertonic3-upstream-LICENSE.txt"
+        val upstreamLicense = OfflineAudioFiles.verified(
+            downloads.file(licenseName).get().asFile,
+            "https://huggingface.co/Supertone/supertonic-3/resolve/3cadd1ee6394adea1bd021217a0e650ede09a323/LICENSE",
+            "0d944a9110fed9a9602d60e0423a272903e7bd21ab060490774efc77c2275e9f", offline.get(), logger
+        )
+        val files = listOf("duration_predictor.int8.onnx", "text_encoder.int8.onnx", "vector_estimator.int8.onnx",
+            "vocoder.int8.onnx", "tts.json", "unicode_indexer.bin", "voice.bin", "LICENSE")
+        val destination = assets.dir("tts").get().asFile
+        fileSystemOperations.sync {
+            from(archiveOperations.tarTree(archive)) {
+                include(files.map { "$model/$it" })
+                includeEmptyDirs = false
+                eachFile { path = name }
+            }
+            from(upstreamLicense)
+            into(destination)
+        }
+        (files + licenseName).forEach { check(destination.resolve(it).length() > 0) { "Missing TTS asset: $it" } }
+    }
+}
+
+private object OfflineAudioFiles {
+    fun verified(
+        file: File, url: String, expectedHash: String, offline: Boolean, logger: org.gradle.api.logging.Logger
+    ): File {
+        val name = file.name
         if (file.isFile && sha256(file) == expectedHash) return file
-        if (offline.get()) {
-            throw GradleException("Missing or invalid STT file: $name. Run the first build with Gradle offline mode disabled.")
+        if (offline) {
+            throw GradleException("Missing or invalid offline audio file: $name. Build once with network access.")
         }
 
         Files.createDirectories(file.toPath().parent)
         val partial = Files.createTempFile(file.toPath().parent, "$name.", ".part")
-        val url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/$tag/$name"
-        logger.lifecycle("Downloading offline STT file $name")
+        logger.lifecycle("Downloading offline audio file $name")
         try {
             val connection = URI.create(url).toURL().openConnection().apply {
                 connectTimeout = 30_000

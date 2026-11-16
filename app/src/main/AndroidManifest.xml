@@ -5,6 +5,8 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <queries>
+        <package android:name="com.google.android.tts" />
+        <package android:name="com.k2fsa.sherpa.onnx.tts.engine" />
         <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>
@@ -22,6 +24,17 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Cafekioskai">
+        <service
+            android:name=".BundledKoreanTtsService"
+            android:enabled="${malloBundledTts}"
+            android:exported="false"
+            android:process=":tts">
+            <intent-filter>
+                <action android:name="android.intent.action.TTS_SERVICE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data android:name="android.speech.tts" android:resource="@xml/mallo_tts_engine" />
+        </service>
         <activity
             android:name=".MainActivity"
             android:exported="true"

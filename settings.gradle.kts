@@ -21,4 +21,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "cafe-kiosk-ai"
 include(":app")
- 
+include(":usbAudioProbe")

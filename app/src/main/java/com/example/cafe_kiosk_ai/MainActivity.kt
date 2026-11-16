@@ -10,6 +10,7 @@ import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
@@ -32,7 +33,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var screenContainer: FrameLayout
     private lateinit var session: KioskSessionViewModel
     private var voice: VoiceController? = null
-    private lateinit var tts: TtsEngine
+    private lateinit var tts: AndroidTtsEngine
+    private var returningFromVoiceSettings = false
     private val testTextInput = TestTextInput()
     private var page: Page? = null
     private var transcript: ChatTranscript? = null
@@ -97,6 +99,13 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (returningFromVoiceSettings) {
+            returningFromVoiceSettings = false
+            tts.reload()
+            lastTtsError = null
+        } else {
+            tts.refreshIfUnavailable()
+        }
         foreground = true
         session.captureSpokenResponses(true)
         render()
@@ -230,7 +239,18 @@ class MainActivity : AppCompatActivity() {
                                 TtsError.KOREAN_UNAVAILABLE -> R.string.tts_korean_unavailable
                                 TtsError.INITIALIZATION, TtsError.PLAYBACK -> R.string.tts_error
                             }
-                            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+                            if (event.reason == TtsError.NO_ENGINE || event.reason == TtsError.KOREAN_UNAVAILABLE) {
+                                AlertDialog.Builder(this)
+                                    .setMessage(R.string.tts_install_korean_prompt)
+                                    .setPositiveButton(R.string.tts_install_korean) { _, _ ->
+                                        returningFromVoiceSettings = true
+                                        openKoreanVoiceSettings(this)
+                                    }
+                                    .setNegativeButton(android.R.string.cancel, null)
+                                    .show()
+                            } else {
+                                Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+                            }
                             lastTtsError = event.reason
                         }
                         finishSpeech()
@@ -263,20 +283,37 @@ class MainActivity : AppCompatActivity() {
         showVoiceState(VoiceState.PREPARING)
         val turn = voiceTurn.start()
         trace(turn, "STT_PREPARING")
-        val controller = voice ?: createVoiceController(this, displayedSessionId, ::onVoiceEvent).also { voice = it }
-        voicePreparation = lifecycleScope.launch {
-            delay(12_000L)
-            if (voiceTurn.id != turn || voiceTurn.phase != VoiceTurn.Phase.PREPARING) return@launch
-            controller.stopListening()
-            onVoiceEvent(turn, VoiceRecognitionEvent.Error(VoiceRecognitionError.PREPARATION))
-        }
+        val controller = voice ?: createVoiceController(this, displayedSessionId, onEvent = ::onVoiceEvent).also { voice = it }
+        watchVoicePreparation(turn, VoiceTurn.Phase.QUEUED)
         trace(turn, "STT_START_REQUESTED")
         controller.startListening(turn)
+    }
+
+    private fun watchVoicePreparation(turn: Long, phase: VoiceTurn.Phase) {
+        voicePreparation?.cancel()
+        voicePreparation = lifecycleScope.launch {
+            delay(12_000L)
+            if (voiceTurn.id != turn || voiceTurn.phase != phase) return@launch
+            val queued = phase == VoiceTurn.Phase.QUEUED
+            trace(turn, if (queued) "STT_CAPTURE_QUEUE_TIMEOUT" else "STT_PREPARATION_TIMEOUT")
+            val reason = if (queued) VoiceRecognitionError.MIC_CLEANUP_TIMEOUT else VoiceRecognitionError.PREPARATION
+            onVoiceEvent(turn, VoiceRecognitionEvent.Error(reason))
+        }
     }
 
     private fun onVoiceEvent(turn: Long, event: VoiceRecognitionEvent) {
         if (voiceTurn.id != turn || !isCurrentScreen(Page.CONVERSATION)) return
         when (event) {
+            VoiceRecognitionEvent.PreparationStarted -> if (voiceTurn.preparing(turn)) {
+                trace(turn, "STT_PREPARATION_STARTED")
+                watchVoicePreparation(turn, VoiceTurn.Phase.PREPARING)
+            }
+            VoiceRecognitionEvent.AwaitingSpeech -> if (voiceTurn.phase == VoiceTurn.Phase.PREPARING) {
+                voicePreparation?.cancel()
+                voicePreparation = null
+                showVoiceState(VoiceState.PREPARING, R.string.voice_usb_awaiting_speech)
+                trace(turn, "STT_AWAITING_SPEECH")
+            }
             VoiceRecognitionEvent.Listening -> if (voiceTurn.ready(turn)) {
                 voicePreparation?.cancel()
                 voicePreparation = null
@@ -285,7 +322,7 @@ class MainActivity : AppCompatActivity() {
             }
             VoiceRecognitionEvent.Processing -> if (voiceTurn.processing(turn)) showVoiceState(VoiceState.PROCESSING)
             is VoiceRecognitionEvent.Result -> {
-                if (voiceTurn.phase == VoiceTurn.Phase.PREPARING) {
+                if (voiceTurn.phase == VoiceTurn.Phase.QUEUED || voiceTurn.phase == VoiceTurn.Phase.PREPARING) {
                     onVoiceEvent(turn, VoiceRecognitionEvent.Error(VoiceRecognitionError.PREPARATION))
                     return
                 }
@@ -313,6 +350,10 @@ class MainActivity : AppCompatActivity() {
                     VoiceRecognitionError.NO_SPEECH, VoiceRecognitionError.NO_RESULT -> R.string.voice_no_speech
                     VoiceRecognitionError.PERMISSION -> R.string.voice_permission_required
                     VoiceRecognitionError.UNAVAILABLE -> R.string.voice_unavailable
+                    VoiceRecognitionError.PREPARATION -> R.string.voice_preparation_failed
+                    VoiceRecognitionError.MIC_NO_DATA -> R.string.voice_mic_no_data
+                    VoiceRecognitionError.MIC_ZERO_SIGNAL -> R.string.voice_mic_zero_signal
+                    VoiceRecognitionError.MIC_CLEANUP_TIMEOUT -> R.string.voice_mic_cleanup_timeout
                     else -> R.string.voice_error
                 }
                 showVoiceState(VoiceState.ERROR, message)
