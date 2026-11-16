@@ -1,5 +1,6 @@
 import org.gradle.api.file.ArchiveOperations
 import org.gradle.api.file.FileSystemOperations
+import groovy.json.JsonSlurper
 import java.net.URI
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
@@ -18,6 +19,44 @@ require(sttEngine in setOf("android", "sensevoice")) {
 }
 val useSenseVoice = sttEngine == "sensevoice"
 val useOfflineTts = useSenseVoice && providers.gradleProperty("malloOfflineTts").orElse("true").get().toBooleanStrict()
+val useGenie = providers.gradleProperty("malloGenie").orElse("false").get().toBooleanStrict()
+val embedGenieModel = useGenie && providers.gradleProperty("malloEmbedGenieModel").orElse("true").get().toBooleanStrict()
+val qairtSdk = if (useGenie) {
+    requireNotNull(providers.gradleProperty("malloQairtSdk")
+        .orElse(providers.environmentVariable("MALLO_QAIRT_SDK")).orNull?.takeIf { it.isNotBlank() }) {
+        "malloGenie requires malloQairtSdk or MALLO_QAIRT_SDK pointing to QAIRT 2.40.0.251030."
+    }
+} else null
+val genieAssets = layout.projectDirectory.dir("src/main/assets/llm")
+val genieArmLibraries = listOf("libGenie.so", "libQnnHtp.so", "libQnnHtpNetRunExtensions.so",
+    "libQnnHtpV68Stub.so", "libQnnSystem.so", "libc++_shared.so")
+val verifyGenieModel = tasks.register("verifyGenieModel") {
+    description = "Checks the supplied Genie assets and verifies the model against its export manifest."
+    val assets = genieAssets.asFile
+    inputs.dir(assets)
+    doLast {
+        val manifest = JsonSlurper().parse(assets.resolve("npu_manifest.json")) as Map<*, *>
+        val model = assets.resolve("llama32_hf_v68.bin")
+        val required = genieArmLibraries + listOf(model.name, "tokenizer.json", "genie_config_npu.json",
+            "htp_backend_ext_config.json", "libQnnHtpV68Skel.so", "prompt_format.json", "MALLO_system_prompt.txt")
+        for (name in required) {
+            val file = assets.resolve(name)
+            check(file.isFile && file.length() > 0) { "Missing or empty Genie file: $name" }
+        }
+        check(model.length() == (manifest["context_bytes"] as Number).toLong() &&
+            OfflineAudioFiles.sha256(model) == manifest["context_sha256"]) { "Genie model does not match npu_manifest.json" }
+        logger.lifecycle("Verified Genie model: ${model.length()} bytes, SHA-256 ${manifest["context_sha256"]}")
+    }
+}
+val prepareGenieLibraries = qairtSdk?.let {
+    tasks.register<Sync>("prepareGenieLibraries") {
+        from(genieAssets) {
+            include(genieArmLibraries)
+            into("arm64-v8a")
+        }
+        into(layout.buildDirectory.dir("generated/genie/jniLibs"))
+    }
+}
 val prepareOfflineTts = if (useOfflineTts) {
     tasks.register<PrepareOfflineTts>("prepareOfflineTts") {
         downloads.set(layout.projectDirectory.dir("offline-tts/downloads"))
@@ -50,6 +89,14 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["malloBundledTts"] = useOfflineTts.toString()
+        buildConfigField("boolean", "MALLO_GENIE_NATIVE", useGenie.toString())
+        buildConfigField("boolean", "MALLO_GENIE_EMBEDDED_MODEL", embedGenieModel.toString())
+        if (qairtSdk != null) {
+            ndk.abiFilters.add("arm64-v8a")
+            externalNativeBuild.cmake.arguments.addAll(listOf(
+                "-DMALLO_QAIRT_SDK=${file(qairtSdk).invariantSeparatorsPath}", "-DANDROID_STL=c++_static"
+            ))
+        }
     }
 
     buildTypes {
@@ -72,10 +119,33 @@ android {
         viewBinding = true
         buildConfig = true
     }
+    if (qairtSdk != null) {
+        androidResources.noCompress.add("bin")
+        androidResources.ignoreAssetsPatterns.addAll(genieArmLibraries + listOf("genie-t2t-run", "run_npu.sh", "prompt.txt"))
+        if (!embedGenieModel) androidResources.ignoreAssetsPatterns.add("llama32_hf_v68.bin")
+        ndkVersion = "28.2.13676358"
+        externalNativeBuild.cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+        packaging.jniLibs.useLegacyPackaging = true
+        // Genie loads QNN plugins by name. Keep the vendor binaries intact.
+        packaging.jniLibs.keepDebugSymbols.addAll(setOf("**/libGenie.so", "**/libQnn*.so", "**/libc++_shared.so"))
+    } else {
+        // Drop the vendor bundle during asset merging, before APK compression or signing.
+        androidResources.ignoreAssetsPatterns.add("<dir>llm")
+    }
     sourceSets.getByName("main") {
         java.srcDir(if (useSenseVoice) "src/sensevoice/java" else "src/platformStt/java")
         if (useOfflineTts) java.srcDir("src/offlineTts/java")
     }
+    sourceSets.getByName("debug").java.srcDir("src/developmentNlu/java")
+    sourceSets.maybeCreate("testRelease").java.srcDir("src/developmentNlu/java")
+}
+
+if (prepareGenieLibraries != null) {
+    android.sourceSets.getByName("main").jniLibs.srcDir(prepareGenieLibraries.map { it.destinationDir })
+    tasks.named("preBuild").configure { dependsOn(verifyGenieModel, prepareGenieLibraries) }
 }
 
 if (prepareOfflineStt != null) {
@@ -231,7 +301,7 @@ private object OfflineAudioFiles {
         return file
     }
 
-    private fun sha256(file: File): String {
+    fun sha256(file: File): String {
         val digest = MessageDigest.getInstance("SHA-256")
         file.inputStream().use { stream ->
             val buffer = ByteArray(64 * 1024)

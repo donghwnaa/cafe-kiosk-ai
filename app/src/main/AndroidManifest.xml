@@ -24,6 +24,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Cafekioskai">
+        <uses-native-library android:name="libcdsprpc.so" android:required="false" />
         <service
             android:name=".BundledKoreanTtsService"
             android:enabled="${malloBundledTts}"

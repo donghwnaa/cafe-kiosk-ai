@@ -10,7 +10,7 @@ enum class DialogueState {
     WAITING_FOR_CART_CONFIRMATION, WAITING_FOR_CANCEL_CONFIRMATION,
     PAYMENT_PENDING, ORDER_COMPLETED
 }
-enum class PendingQuestion { NONE, MENU, QUANTITY, TEMPERATURE, SIZE, ITEM_CONFIRMATION, DRAFT_TARGET, CART_TARGET, CART_CHANGE, CANCEL_ALL }
+enum class PendingQuestion { NONE, MENU, QUANTITY, TEMPERATURE, SIZE, ITEM_CONFIRMATION, ITEM_CORRECTION, DRAFT_TARGET, CART_TARGET, CART_CHANGE, CANCEL_ALL }
 enum class PaymentState { WAITING_PAYMENT, PROCESSING_PAYMENT, PAYMENT_SUCCESS, PAYMENT_FAILED }
 
 /** 시연용 결과만 반환하며 실제 카드 단말기나 결제망에는 연결하지 않습니다. */
@@ -121,7 +121,9 @@ class OrderManager(private val validator: OrderValidator = OrderValidator()) {
             val same = next.indexOfFirst { it.menu == item.menu && it.temperature == item.temperature && it.size == item.size }
             if (same >= 0) {
                 val previous = next[same]
-                next[same] = previous.copy(quantity = previous.quantity + item.quantity)
+                val quantity = previous.quantity + item.quantity
+                if (quantity > 99) return "같은 옵션의 상품은 장바구니에 99잔까지 담을 수 있습니다."
+                next[same] = previous.copy(quantity = quantity)
                 lastId = previous.id
             } else {
                 next.add(item)

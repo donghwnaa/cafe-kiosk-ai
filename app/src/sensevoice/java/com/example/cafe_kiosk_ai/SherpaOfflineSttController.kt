@@ -160,6 +160,7 @@ internal class SherpaOfflineSttController(
         val window = FloatArray(WINDOW_SIZE)
         val idleLimit = SAMPLE_RATE * IDLE_SECONDS
         val zeroSignalSamples = inputRate * 5
+        val emulator = AndroidRuntimeEnvironment.isEmulator
         val speechLimit = (SAMPLE_RATE * config.maxSpeechSeconds).toInt()
         var filled = 0
         var received = 0
@@ -214,7 +215,7 @@ internal class SherpaOfflineSttController(
                     turn.receivedAudio = true
                     trace(turn, "PREPARING", "FIRST_AUDIO_BUFFER_RECEIVED",
                         "captureSamples=${levels.samples} modelSamples=${window.size} captureRate=$inputRate")
-                    if (capture.record.routedDevice?.isUsbInput == true) {
+                    if (emulator || capture.record.routedDevice?.isUsbInput == true) {
                         post(turn, VoiceRecognitionEvent.AwaitingSpeech)
                     } else {
                         markListening(turn)
@@ -227,6 +228,12 @@ internal class SherpaOfflineSttController(
                 if (!zeroReported && levels.trailingZeros >= zeroSignalSamples) {
                     zeroReported = true
                     trace(turn, "LISTENING", "AUDIO_PCM_ZERO_ONLY", "$levels ${capture.routeStatus()}")
+                }
+                // Android's virtual microphone can supply low-level PCM even without host speech.
+                if (emulator && speechStart == 0 && levels.samples >= zeroSignalSamples &&
+                    (levels.peak ?: 0) <= 16) {
+                    throw AudioInputException("Virtual microphone has no usable signal after five seconds: $levels",
+                        reason = VoiceRecognitionError.MIC_ZERO_SIGNAL)
                 }
                 detector.acceptWaveform(window)
                 received += window.size

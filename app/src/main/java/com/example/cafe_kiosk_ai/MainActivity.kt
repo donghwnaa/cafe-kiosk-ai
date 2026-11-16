@@ -33,12 +33,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var screenContainer: FrameLayout
     private lateinit var session: KioskSessionViewModel
     private var voice: VoiceController? = null
-    private lateinit var tts: AndroidTtsEngine
+    private var tts: AndroidTtsEngine? = null
+    private var genieTextInput: GenieTextInput? = null
     private var returningFromVoiceSettings = false
     private val testTextInput = TestTextInput()
+    private var demoOpen = false
     private var page: Page? = null
     private var transcript: ChatTranscript? = null
     private var savedChatOffset: Int? = null
+    private var savedChatMessageCount = 0
     private var displayedSessionId: String? = null
     private var foreground = false
     private var permissionRequested = false
@@ -64,12 +67,14 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         screenContainer = findViewById(R.id.screen_container)
         session = ViewModelProvider(this)[KioskSessionViewModel::class.java]
-        tts = AndroidTtsEngine(this)
+        if (!session.usesGenieTextInput) tts = AndroidTtsEngine(this)
         savedChatOffset = savedInstanceState?.getInt("chatOffset", -1)?.takeIf { it >= 0 }
+        savedChatMessageCount = savedInstanceState?.getInt("chatMessageCount") ?: 0
         permissionRequested = savedInstanceState?.getBoolean("voicePermissionRequested") == true
         permissionRequestInFlight = savedInstanceState?.getBoolean("voicePermissionPending") == true
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { view, insets ->
-            val padding = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+            val system = WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+            val padding = insets.getInsets(if (session.usesGenieTextInput) system or WindowInsetsCompat.Type.ime() else system)
             view.setPadding(padding.left, padding.top, padding.right, padding.bottom)
             insets
         }
@@ -88,10 +93,15 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             session.updates.collect { render() }
         }
+        session.genie?.let { genie ->
+            lifecycleScope.launch { genie.model.collect { renderGenieInput() } }
+            lifecycleScope.launch { genie.turn.collect { renderGenieInput() } }
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putInt("chatOffset", transcript?.takeUnless { it.isNearLatest() }?.offset ?: savedChatOffset ?: -1)
+        outState.putInt("chatMessageCount", transcript?.messageCount ?: savedChatMessageCount)
         outState.putBoolean("voicePermissionRequested", page == Page.CONVERSATION && permissionRequested)
         outState.putBoolean("voicePermissionPending", permissionRequestInFlight)
         super.onSaveInstanceState(outState)
@@ -101,10 +111,10 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         if (returningFromVoiceSettings) {
             returningFromVoiceSettings = false
-            tts.reload()
+            tts?.reload()
             lastTtsError = null
         } else {
-            tts.refreshIfUnavailable()
+            tts?.refreshIfUnavailable()
         }
         foreground = true
         session.captureSpokenResponses(true)
@@ -121,7 +131,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         testTextInput.detach()
         releaseVoice()
-        tts.release()
+        tts?.release()
         super.onDestroy()
     }
 
@@ -138,7 +148,13 @@ class MainActivity : AppCompatActivity() {
         when (destination) {
             Page.START -> Unit
             Page.CONVERSATION -> {
-                transcript?.render(conversation.messages, conversation.pending, savedChatOffset)
+                val messages = session.transcriptMessages
+                transcript?.render(
+                    messages, conversation.pending,
+                    savedChatOffset.takeIf { savedChatMessageCount == messages.size },
+                    actionMessageIndex = messages.lastIndex - if (session.hasTrailingTranscriptNotice) 1 else 0
+                )
+                renderGenieInput()
                 savedChatOffset = null
             }
             Page.PAYMENT -> renderPayment(screenContainer.getChildAt(0))
@@ -149,9 +165,9 @@ class MainActivity : AppCompatActivity() {
     private fun showPage(destination: Page) {
         stopAudio()
         if (page != null) permissionRequested = false
-        savedChatOffset = if (destination == Page.START || destination == page) null else
-            transcript?.takeUnless { it.isNearLatest() }?.offset ?: savedChatOffset
+        if (page != null) savedChatOffset = null
         transcript = null
+        genieTextInput = null
         testTextInput.detach()
         page = destination
         displayedSessionId = session.conversation.currentSessionId
@@ -173,9 +189,18 @@ class MainActivity : AppCompatActivity() {
         when (destination) {
             Page.START -> screen.findViewById<View>(R.id.btn_start_order).setOnClickListener { session.startSession() }
             Page.CONVERSATION -> {
-                screen.findViewById<View>(R.id.home_icon).setOnClickListener { session.goHome() }
-                transcript = ChatTranscript(screen, ::submitOrder)
-                testTextInput.attach(this, ::submitOrder)
+                val home = screen.findViewById<View>(R.id.home_icon)
+                home.setOnClickListener { session.goHome() }
+                transcript = ChatTranscript(screen, submit = ::submitOrder)
+                if (session.usesGenieTextInput) {
+                    screen.findViewById<View>(R.id.voice_footer).isVisible = false
+                    genieTextInput = GenieTextInput(screen, ::submitOrder)
+                }
+                testTextInput.attach(this, home, screen.findViewById(R.id.genie_demo), ::submitOrder, session.genie) { open ->
+                    demoOpen = open
+                    renderGenieInput()
+                    if (open) stopAudio() else syncAudio()
+                }
                 screen.findViewById<View>(R.id.voice_retry).setOnClickListener {
                     consecutiveVoiceErrors = 0
                     permissionRequested = false
@@ -198,6 +223,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun syncAudio() {
+        if (session.usesGenieTextInput || demoOpen) return
         val inConversation = isCurrentScreen(Page.CONVERSATION)
         if (!inConversation && !isCurrentScreen(Page.PAYMENT)) return
         if (activeSpeech != null) return
@@ -215,6 +241,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun speakResponse(text: String, destination: Page) {
+        val tts = tts ?: return
         cancelVoiceTurn()
         val speech = ++speechSequence
         activeSpeech = speech
@@ -311,7 +338,9 @@ class MainActivity : AppCompatActivity() {
             VoiceRecognitionEvent.AwaitingSpeech -> if (voiceTurn.phase == VoiceTurn.Phase.PREPARING) {
                 voicePreparation?.cancel()
                 voicePreparation = null
-                showVoiceState(VoiceState.PREPARING, R.string.voice_usb_awaiting_speech)
+                // The first PCM window is ready. Keep the recognition phase until the controller signals Listening.
+                showVoiceState(VoiceState.PREPARING, if (AndroidRuntimeEnvironment.isEmulator)
+                    R.string.voice_listening else R.string.voice_usb_awaiting_speech)
                 trace(turn, "STT_AWAITING_SPEECH")
             }
             VoiceRecognitionEvent.Listening -> if (voiceTurn.ready(turn)) {
@@ -328,11 +357,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 trace(turn, "STT_RESULT")
                 cancelVoiceTurn()
-                if (submitOrder(event.text)) {
-                    transcript?.followAcceptedVoiceInput()
-                } else {
-                    syncAudio()
-                }
+                if (!submitOrder(event.text)) syncAudio()
             }
             is VoiceRecognitionEvent.Error -> {
                 val preparing = voiceTurn.phase == VoiceTurn.Phase.PREPARING
@@ -351,20 +376,28 @@ class MainActivity : AppCompatActivity() {
                     VoiceRecognitionError.PERMISSION -> R.string.voice_permission_required
                     VoiceRecognitionError.UNAVAILABLE -> R.string.voice_unavailable
                     VoiceRecognitionError.PREPARATION -> R.string.voice_preparation_failed
-                    VoiceRecognitionError.MIC_NO_DATA -> R.string.voice_mic_no_data
-                    VoiceRecognitionError.MIC_ZERO_SIGNAL -> R.string.voice_mic_zero_signal
+                    VoiceRecognitionError.MIC_NO_DATA -> if (AndroidRuntimeEnvironment.isEmulator)
+                        R.string.voice_emulator_mic_no_data else R.string.voice_mic_no_data
+                    VoiceRecognitionError.MIC_ZERO_SIGNAL -> if (AndroidRuntimeEnvironment.isEmulator)
+                        R.string.voice_emulator_mic_zero_signal else R.string.voice_mic_zero_signal
                     VoiceRecognitionError.MIC_CLEANUP_TIMEOUT -> R.string.voice_mic_cleanup_timeout
                     else -> R.string.voice_error
                 }
                 showVoiceState(VoiceState.ERROR, message)
+                if (message == R.string.voice_no_speech) session.showRecognitionRetry(getString(message))
             }
         }
     }
 
     private fun submitOrder(text: String): Boolean {
+        if (demoOpen) return false
         if (text.isBlank() || !isCurrentScreen(Page.CONVERSATION) || session.isProcessingInput ||
             activeSpeech != null || session.hasSpokenResponses
         ) return false
+        if (session.usesGenieTextInput) {
+            if (session.genie == null) return false
+            return session.submit(text).also { if (it) renderGenieInput() }
+        }
         cancelVoiceTurn()
         consecutiveVoiceErrors = 0
         showVoiceState(VoiceState.PROCESSING)
@@ -405,12 +438,13 @@ class MainActivity : AppCompatActivity() {
     private fun stopAudio() {
         releaseVoice()
         activeSpeech = null
-        tts.stop()
+        tts?.stop()
         consecutiveVoiceErrors = 0
         showVoiceState(VoiceState.STOPPED)
     }
 
     private fun showVoiceState(state: VoiceState, @StringRes message: Int = state.message) {
+        if (session.usesGenieTextInput) return
         voiceState = state
         if (page != Page.CONVERSATION) return
         screenContainer.findViewById<TextView>(R.id.voice_status)?.apply {
@@ -418,6 +452,15 @@ class MainActivity : AppCompatActivity() {
             if (text != label) text = label
         }
         screenContainer.findViewById<View>(R.id.voice_retry)?.isVisible = state == VoiceState.ERROR && voiceRestart == null
+    }
+
+    private fun renderGenieInput() {
+        val genie = session.genie
+        genieTextInput?.render(
+            model = genie?.model?.value,
+            turn = genie?.turn?.value?.takeIf { it.sessionId == session.conversation.currentSessionId },
+            busy = session.isProcessingInput || demoOpen
+        )
     }
 
     private fun renderPayment(screen: View) {

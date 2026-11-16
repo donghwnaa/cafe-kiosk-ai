@@ -53,6 +53,9 @@ internal fun microphoneProfiles(context: Context): List<CaptureProfile> {
     val recognition = MediaRecorder.AudioSource.VOICE_RECOGNITION
     val mic = MediaRecorder.AudioSource.MIC
     val standard = CaptureProfile(recognition, 16_000)
+    if (AndroidRuntimeEnvironment.isEmulator) {
+        return listOf(standard, CaptureProfile(mic, 16_000))
+    }
     val usb = inputs.firstOrNull { it.isUsbInput }
     if (usb == null) return listOf(standard, CaptureProfile(mic, 16_000))
     return usbCaptureProfiles(usb)

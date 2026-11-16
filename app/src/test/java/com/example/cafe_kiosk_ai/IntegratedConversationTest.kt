@@ -9,7 +9,7 @@ class IntegratedConversationTest {
     private fun ConversationManager.latestCard() = messages.last().card
 
     @Test fun additionalOrdersRetainCartAndAppendSnapshotsToOneHistory() {
-        val c = ConversationManager()
+        val c = ConversationManager(FakeNluEngine())
         c.startNewSession()
         c.send("아아 두 잔 주세요")
         val questionHistory = c.messages
@@ -38,7 +38,7 @@ class IntegratedConversationTest {
     }
 
     @Test fun browsingMenuCartAndPriceKeepsTheExactDraftQuestion() {
-        val c = ConversationManager()
+        val c = ConversationManager(FakeNluEngine())
         c.startNewSession()
         c.send("아메리카노 두 잔 주세요")
         assertEquals(PendingQuestion.TEMPERATURE, c.pending)
@@ -62,7 +62,7 @@ class IntegratedConversationTest {
     }
 
     @Test fun keepsUnconfirmedItemAndAsksOptionsForEachItemInABatch() {
-        val c = ConversationManager()
+        val c = ConversationManager(FakeNluEngine())
         c.startNewSession()
         c.send("아아 두 잔 보통으로 주세요")
         val original = c.draft
@@ -93,7 +93,7 @@ class IntegratedConversationTest {
     }
 
     @Test fun validatedCartEditsResolveTargetsAndNeverApplyPartOfABatch() {
-        val c = ConversationManager()
+        val c = ConversationManager(FakeNluEngine())
         c.startNewSession()
         c.send("아아 두 잔 보통으로")
         c.send("맞아요")
@@ -104,6 +104,7 @@ class IntegratedConversationTest {
         assertEquals(PendingQuestion.CART_TARGET, c.pending)
         assertEquals(baseline, c.orders.cart)
         c.send("첫 번째 음료")
+        c.send("맞아요")
         assertEquals(1, c.orders.cart.first().quantity)
         c.send("카푸치노 HOT → ICE 변경")
         assertEquals(Temperature.HOT, c.orders.cart.last().temperature)
@@ -130,7 +131,7 @@ class IntegratedConversationTest {
     }
 
     @Test fun sameVariantsMergeAndPaymentLocksTheCompletedOrderUntilNewSession() {
-        val c = ConversationManager()
+        val c = ConversationManager(FakeNluEngine())
         c.startNewSession()
         val sessionId = c.contextSnapshot()!!.sessionId
         repeat(2) {
@@ -185,5 +186,79 @@ class IntegratedConversationTest {
         c.send("맞아요")
         assertEquals(2, c.orders.cart.single().quantity)
         assertEquals(before.single().id, c.orders.cart.single().id)
+    }
+
+    @Test fun genieSchemaDrivesOrderCartAndCancellation() {
+        val yes = """{"function":"dialogue_response","response":"confirm"}"""
+        val c = ConversationManager(LlmNluEngine(
+            LlmEngine { text, _ -> if (text == "맞아요") yes else text },
+            FunctionCallAdapter(NluJsonAdapter::decodeGenie)
+        ))
+        c.startNewSession()
+        c.send("""{"function":"add_menu","menu":"아메리카노","quantity":2,"temperature":"ICE"}""")
+        assertEquals(PendingQuestion.SIZE, c.pending)
+        assertEquals(OrderStage.ITEM_CONFIRM, c.send("""{"function":"change_option","size":"REGULAR"}""").stage)
+        assertEquals(OrderStage.CART_REVIEW, c.send("맞아요").stage)
+        val firstItem = c.orders.cart.single()
+        assertEquals(2, firstItem.quantity)
+        assertEquals(Temperature.ICE, firstItem.temperature)
+
+        c.send("""{"function":"change_quantity","target_index":1,"delta":1}""")
+        assertEquals(listOf(firstItem), c.orders.cart)
+        c.send("맞아요")
+        assertEquals(3, c.orders.cart.single().quantity)
+        assertEquals(firstItem.id, c.orders.cart.single().id)
+
+        c.send("""{"function":"multi_action","actions":[
+            {"function":"remove_menu","target_index":1,"quantity":1},
+            {"function":"add_menu","menu":"카페라떼","quantity":1,"temperature":"HOT","size":"TALL"}
+        ]}""")
+        c.send("맞아요")
+        assertEquals(listOf(2, 1), c.orders.cart.map { it.quantity })
+        assertTrue(c.send("""{"function":"show_cart"}""").response.isNotBlank())
+        assertTrue(c.latestCard() is ChatCard.CartSummary)
+        c.send("""{"function":"cancel_all"}""")
+        assertEquals(PendingQuestion.CANCEL_ALL, c.pending)
+        c.send("맞아요")
+        assertTrue(c.orders.cart.isEmpty())
+    }
+
+    @Test fun genieSchemaRejectsInvalidJsonAndOutOfRangeChanges() {
+        val c = ConversationManager(LlmNluEngine(
+            LlmEngine { text, _ -> if (text == "맞아요") """{"function":"dialogue_response","response":"confirm"}""" else text },
+            FunctionCallAdapter(NluJsonAdapter::decodeGenie)
+        ))
+        c.startNewSession()
+        c.send("""{"function":"add_menu","menu":"아메리카노","quantity":2,"temperature":"ICE","size":"REGULAR"}""")
+        c.send("맞아요")
+        val before = c.orders.cart
+        listOf(
+            """{"function":"add_menu","menu":"없는 메뉴"}""",
+            """{"function":"add_menu","menu":"카페라떼","quantity":0}""",
+            """{"function":"add_menu","menu":"카페라떼","quantity":2,"quantity":3}""",
+            """{"function":"add_menu","menu":"레몬에이드","temperature":"HOT"}""",
+            """{"function":"change_quantity","target_index":1,"delta":-2}""",
+            """{"function":"change_quantity","target_index":1,"delta":98}""",
+            """{"function":"change_quantity","target_index":2,"quantity":3}""",
+            """{"function":"remove_menu","target_index":1} trailing""",
+            """{"function":"multi_action","actions":[
+                {"function":"remove_menu","target_index":1},
+                {"function":"add_menu","menu":"없는 메뉴"}
+            ]}"""
+        ).forEach {
+            c.send(it)
+            assertEquals(before, c.orders.cart)
+            assertTrue(c.contextSnapshot()!!.drafts.isEmpty())
+        }
+    }
+
+    @Test fun genieInitializationFailureIsPresentedWithoutApplyingAnOrder() {
+        val c = ConversationManager(LlmNluEngine(LlmEngine { _, _ ->
+            throw com.example.cafe_kiosk_ai.llm.LlmUnavailableException("모델을 시작하지 못했습니다.")
+        }))
+        c.startNewSession()
+        assertEquals("모델을 시작하지 못했습니다.", c.send("아이스 아메리카노 두 잔 주세요.").response)
+        assertTrue(c.orders.cart.isEmpty())
+        assertNull(c.draft)
     }
 }

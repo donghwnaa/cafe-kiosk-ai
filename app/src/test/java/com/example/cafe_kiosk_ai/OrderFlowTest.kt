@@ -8,7 +8,7 @@ class OrderFlowTest {
     private fun ConversationManager.send(text: String) = runBlocking { handleUserInput(text) }
 
     @Test fun t01To03_iceAmericanoQuestionAndConfirmation() {
-        val c = ConversationManager()
+        val c = ConversationManager(FakeNluEngine())
         c.startNewSession()
         val first = c.send("아아 두 잔 주세요")
         assertEquals(1, first.screen)
@@ -23,7 +23,7 @@ class OrderFlowTest {
     }
 
     @Test fun t04To06_temperatureAndCorrection() {
-        val c = ConversationManager()
+        val c = ConversationManager(FakeNluEngine())
         c.startNewSession()
         assertEquals(DialogueState.WAITING_FOR_TEMPERATURE, c.run { send("아메리카노 한 잔 주세요"); state })
         assertEquals(DialogueState.WAITING_FOR_SIZE, c.run { send("따뜻한 걸로 주세요"); state })
@@ -34,7 +34,7 @@ class OrderFlowTest {
     }
 
     @Test fun t07To10_addRemoveAndCancelConfirmation() {
-        val c = ConversationManager()
+        val c = ConversationManager(FakeNluEngine())
         c.startNewSession()
         c.send("아아 두 잔 보통으로 주세요")
         c.send("맞아요")
@@ -45,6 +45,7 @@ class OrderFlowTest {
         c.send("유자차 따뜻하게 하나 보통으로 주세요")
         c.send("맞아요")
         c.send("유자차 하나 빼줘")
+        c.send("맞아요")
         assertEquals(1, c.orders.cart.size)
         c.send("전부 취소할게요")
         assertEquals(DialogueState.WAITING_FOR_CANCEL_CONFIRMATION, c.state)
@@ -53,7 +54,7 @@ class OrderFlowTest {
     }
 
     @Test fun t11To14_cartAndMockPayment() {
-        val c = ConversationManager()
+        val c = ConversationManager(FakeNluEngine())
         c.startNewSession()
         assertEquals(3, c.send("주문한 거 보여줘").screen)
         assertEquals(3, c.send("계산할게요").screen)
@@ -72,7 +73,7 @@ class OrderFlowTest {
     }
 
     @Test fun t15To20_ambiguityMultiActionUnknownAndReset() {
-        val c = ConversationManager()
+        val c = ConversationManager(FakeNluEngine())
         c.startNewSession()
         assertTrue(c.send("아아 두 잔 아니 한 잔").response.contains("수량"))
         assertNull(c.draft)
@@ -102,7 +103,7 @@ class OrderFlowTest {
     }
 
     @Test fun cartChangesAreValidatedBeforeCommitAndVariantsStaySeparate() {
-        val c = ConversationManager()
+        val c = ConversationManager(FakeNluEngine())
         c.startNewSession()
         c.send("아아 한 잔 보통으로")
         c.send("맞아요")
@@ -111,6 +112,7 @@ class OrderFlowTest {
         assertEquals(2, c.orders.cart.size)
         assertEquals(PendingQuestion.CART_TARGET, c.run { send("아메리카노 하나 빼줘"); pending })
         c.send("차갑게")
+        c.send("맞아요")
         assertEquals(1, c.orders.cart.size)
         c.send("아메리카노 두 잔으로 바꿔줘")
         assertEquals(1, c.orders.cart.single().quantity)
@@ -119,7 +121,7 @@ class OrderFlowTest {
     }
 
     @Test fun unsupportedOptionsAndMultipleMenusNeverCommitSilently() {
-        val c = ConversationManager()
+        val c = ConversationManager(FakeNluEngine())
         c.startNewSession()
         assertTrue(c.send("아메리카노와 레몬에이드 뜨겁게 주세요").response.contains("옵션이 없습니다"))
         assertNull(c.draft)
@@ -132,13 +134,15 @@ class OrderFlowTest {
     }
 
     @Test fun deletingAnItemDiffersFromRemovingOneCup() {
-        val c = ConversationManager()
+        val c = ConversationManager(FakeNluEngine())
         c.startNewSession()
         c.send("유자차 따뜻하게 두 잔 보통으로")
         c.send("맞아요")
         c.send("유자차 한 잔 빼줘")
+        c.send("맞아요")
         assertEquals(1, c.orders.cart.single().quantity)
         c.send("유자차 삭제")
+        c.send("맞아요")
         assertTrue(c.orders.cart.isEmpty())
     }
 }

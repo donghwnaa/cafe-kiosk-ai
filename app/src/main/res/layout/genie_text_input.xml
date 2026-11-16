@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/genie_text_input"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginHorizontal="8dp"
+    android:layout_marginTop="8dp"
+    android:background="@drawable/bg_soft_panel"
+    android:orientation="vertical"
+    android:paddingHorizontal="12dp"
+    android:paddingVertical="6dp"
+    android:visibility="gone">
+
+    <EditText
+        android:id="@+id/genie_order_text"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:fontFamily="serif"
+        android:hint="@string/genie_text_hint"
+        android:inputType="textCapSentences"
+        android:minHeight="48dp"
+        android:singleLine="true"
+        android:textColor="#2D2626"
+        android:textSize="20sp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/genie_send"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/genie_send"
+            android:textSize="18sp" />
+
+        <Button
+            android:id="@+id/genie_clear"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/genie_clear"
+            android:textSize="18sp" />
+
+        <Button
+            android:id="@+id/genie_examples"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/genie_examples"
+            android:textSize="18sp" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/genie_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:accessibilityLiveRegion="polite"
+        android:fontFamily="serif"
+        android:textColor="#2D2626"
+        android:textSize="18sp" />
+
+    <Button
+        android:id="@+id/genie_details"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:minHeight="48dp"
+        android:text="@string/genie_details"
+        android:textSize="18sp"
+        android:visibility="gone" />
+</LinearLayout>

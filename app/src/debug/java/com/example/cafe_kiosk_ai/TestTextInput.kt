@@ -2,27 +2,68 @@ package com.example.cafe_kiosk_ai
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.util.Base64
+import android.view.View
+import android.widget.EditText
+import android.app.Dialog
+import androidx.activity.ComponentActivity
 import androidx.core.content.ContextCompat
+import com.example.cafe_kiosk_ai.llm.GenieLlmEngine
+
+internal fun createDevelopmentNlu(): NluEngine = FakeNluEngine()
 
 internal class TestTextInput {
     private var unregisterInputReceiver: (() -> Unit)? = null
+    private var dialog: Dialog? = null
 
-    fun attach(activity: Activity, submit: (String) -> Boolean) {
+    fun attach(
+        activity: ComponentActivity, trigger: View, demoButton: View, submit: (String) -> Boolean,
+        genie: GenieLlmEngine?, onDemoOpen: (Boolean) -> Unit
+    ) {
+        if (genie != null) {
+            demoButton.visibility = View.VISIBLE
+            demoButton.setOnClickListener {
+                if (dialog?.isShowing == true) return@setOnClickListener
+                onDemoOpen(true)
+                dialog = GenieDemoDialog.show(activity, genie) { onDemoOpen(false) }
+            }
+        }
+        trigger.setOnLongClickListener {
+            val input = EditText(activity).apply {
+                hint = "아이스 아메리카노 두 잔 주세요."
+                setSingleLine()
+            }
+            dialog = AlertDialog.Builder(activity)
+                .setTitle(if (genie != null) "Genie 주문 테스트" else "DEBUG 주문 테스트")
+                .setView(input)
+                .setNegativeButton("닫기", null)
+                .setPositiveButton("분석", null)
+                .setNeutralButton("Genie LLM 테스트") { _, _ -> dialog = GenieDiagnostics.show(activity, genie) }
+                .show().apply {
+                    getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                        if (submit(input.text.toString())) dismiss()
+                        else input.error = "문장을 입력하고 진행 중인 안내가 끝난 뒤 다시 시도해 주세요."
+                    }
+                }
+            true
+        }
         // Keep the ADB test entry point behind the existing DUMP permission.
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
                 val encoded = intent.getStringExtra("text_b64") ?: return
-                val bytes = try {
-                    Base64.decode(encoded, Base64.DEFAULT)
+                val text = try {
+                    Base64.decode(encoded, Base64.DEFAULT).decodeToString(throwOnInvalidSequence = true)
                 } catch (_: IllegalArgumentException) {
                     return
+                } catch (_: java.nio.charset.CharacterCodingException) {
+                    return
                 }
-                if (submit(bytes.toString(Charsets.UTF_8)) && isOrderedBroadcast) {
+                if (submit(text) && isOrderedBroadcast) {
                     resultCode = Activity.RESULT_OK
                 }
             }
@@ -39,6 +80,8 @@ internal class TestTextInput {
     }
 
     fun detach() {
+        dialog?.dismiss()
+        dialog = null
         unregisterInputReceiver?.invoke()
         unregisterInputReceiver = null
     }

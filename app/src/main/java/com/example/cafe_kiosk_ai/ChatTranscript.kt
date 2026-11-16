@@ -3,7 +3,6 @@ package com.example.cafe_kiosk_ai
 import android.graphics.Color
 import android.graphics.Typeface
 import android.view.Gravity
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
@@ -12,79 +11,59 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import androidx.core.view.doOnNextLayout
+import androidx.core.view.OneShotPreDrawListener
 import java.text.NumberFormat
 import java.util.Locale
 
-/** Each response owns its card snapshot. The transcript only appends new rows. */
-internal class ChatTranscript(screen: View, private val submit: (String) -> Boolean) {
+/** Each response owns its card snapshot. */
+internal class ChatTranscript(
+    screen: View,
+    private val showActions: Boolean = true,
+    private val submit: (String) -> Boolean
+) {
     private val context = screen.context
     private val rows = screen.findViewById<LinearLayout>(R.id.chat_messages)
     private val scroll = screen.findViewById<ScrollView>(R.id.chat_scroll)
     private val currency = NumberFormat.getNumberInstance(Locale.KOREA)
-    private var renderedCount = 0
+    private var renderedMessages = emptyList<ChatMessage>()
+    private var pendingScroll: OneShotPreDrawListener? = null
     private var latestCartHeading: TextView? = null
     private var currentActions: LinearLayout? = null
-    private var browsedInitialMenu = false
-    private var manualScrollRevision = 0
-    private var acceptedVoiceScrollRevision: Int? = null
-
-    init {
-        scroll.setOnScrollChangeListener { _, _, y, _, _ ->
-            if (renderedCount == 1 && y > 0) browsedInitialMenu = true
-        }
-        scroll.setOnTouchListener { _, event ->
-            if (event.actionMasked == MotionEvent.ACTION_MOVE) manualScrollRevision++
-            false
-        }
-        scroll.setOnGenericMotionListener { _, event ->
-            if (event.actionMasked == MotionEvent.ACTION_SCROLL) manualScrollRevision++
-            false
-        }
-    }
+    private var renderedActionMessageIndex = -1
 
     val offset: Int get() = scroll.scrollY
+    val messageCount: Int get() = renderedMessages.size
     fun isNearLatest(): Boolean = rows.bottom - (scroll.height + offset) <= dp(32)
 
-    fun followAcceptedVoiceInput() {
-        acceptedVoiceScrollRevision = manualScrollRevision
-    }
+    fun render(
+        messages: List<ChatMessage>, pending: PendingQuestion, restoreOffset: Int?,
+        actionMessageIndex: Int = messages.lastIndex
+    ) {
+        if (messages == renderedMessages) return
+        val firstRender = renderedMessages.isEmpty()
+        val appendOnly = messages.size > messageCount && messages.subList(0, messageCount) == renderedMessages
+        if (!appendOnly || actionMessageIndex != renderedActionMessageIndex) {
+            currentActions?.removeAllViews()
+            currentActions = null
+        }
+        if (!appendOnly) {
+            rows.removeAllViews()
+            latestCartHeading = null
+        }
+        val start = if (appendOnly) messageCount else 0
+        for (index in start until messages.size) {
+            append(messages[index], pending.takeIf { index == actionMessageIndex })
+        }
+        renderedMessages = messages.toList()
+        renderedActionMessageIndex = actionMessageIndex
 
-    fun render(messages: List<ChatMessage>, pending: PendingQuestion, restoreOffset: Int?) {
-        if (renderedCount >= messages.size) return
-        val voiceScroll = acceptedVoiceScrollRevision?.takeIf {
-            messages.subList(renderedCount, messages.size).any(ChatMessage::fromUser)
+        val initialMenu = firstRender && messages.singleOrNull()?.card == ChatCard.Menu
+        pendingScroll?.removeListener()
+        pendingScroll = OneShotPreDrawListener.add(scroll) {
+            pendingScroll = null
+            val target = restoreOffset ?: if (initialMenu) 0 else rows.bottom
+            scroll.scrollTo(0, target)
         }
-        if (voiceScroll != null) acceptedVoiceScrollRevision = null
-        val firstNewRow = renderedCount
-        val follow = renderedCount == 0 || isNearLatest() || (renderedCount == 1 && !browsedInitialMenu)
-        currentActions?.removeAllViews()
-        currentActions = null
-        val lastIndex = messages.lastIndex
-        for (index in renderedCount..lastIndex) {
-            append(messages[index], pending.takeIf { index == lastIndex })
-        }
-        val initialGreeting = renderedCount == 0 && messages.size == 1
-        renderedCount = messages.size
-        scroll.doOnNextLayout {
-            when {
-                restoreOffset != null -> scroll.scrollTo(0, restoreOffset)
-                initialGreeting -> scroll.scrollTo(0, 0)
-                voiceScroll != null -> {
-                    // A new scroll after acceptance takes precedence over the queued jump.
-                    if (voiceScroll == manualScrollRevision) {
-                        // Show the start of the turn if the new messages and card cannot fit together.
-                        val target = minOf(rows.bottom - scroll.height, rows.top + rows.getChildAt(firstNewRow).top)
-                        scroll.smoothScrollTo(0, target)
-                    }
-                }
-                follow -> scrollToLatest()
-            }
-        }
-    }
-
-    fun scrollToLatest() {
-        scroll.scrollTo(0, rows.bottom)
     }
 
     private fun append(message: ChatMessage, activeQuestion: PendingQuestion?) {
@@ -114,13 +93,13 @@ internal class ChatTranscript(screen: View, private val submit: (String) -> Bool
             ChatCard.Menu -> content.addView(menuCard())
             is ChatCard.ItemConfirmation -> {
                 content.addView(confirmationCard(card))
-                if (activeQuestion == PendingQuestion.ITEM_CONFIRMATION) {
+                if (showActions && activeQuestion == PendingQuestion.ITEM_CONFIRMATION) {
                     content.addView(actions("맞아요" to "맞아요", "수정할게요" to "수정할게요"))
                 }
             }
             is ChatCard.CartSummary -> {
                 content.addView(cartCard(card))
-                if (activeQuestion == PendingQuestion.NONE && card.items.isNotEmpty()) {
+                if (showActions && activeQuestion == PendingQuestion.NONE && card.items.isNotEmpty()) {
                     content.addView(actions("메뉴 추가" to "다른 메뉴 추가해줘", "계산할게요" to "계산할게요"))
                 }
             }
@@ -129,11 +108,11 @@ internal class ChatTranscript(screen: View, private val submit: (String) -> Bool
     }
 
     private fun menuCard(): LinearLayout = card().apply {
-        addView(text("메뉴 · 시연용 임시 가격", 20f, bold = true))
+        addView(text("메뉴", 20f, bold = true))
         for (menu in MenuCatalog.items) {
             addView(product(menu, menu.name,
                 "${menu.temperatures.joinToString(" / ")} · ${menu.sizes.joinToString(" / ")}\n" +
-                    "보통 ${money(menu.priceRegular)} · 큰 ${money(menu.priceTall)}"))
+                    "보통 크기 ${money(menu.priceRegular)}\n큰 크기 ${money(menu.priceTall)}"))
         }
     }
 
@@ -141,7 +120,7 @@ internal class ChatTranscript(screen: View, private val submit: (String) -> Bool
         addView(text("상품 확인", 20f, bold = true))
         value.items.forEachIndexed { index, item ->
             addView(product(item.menu, "${index + 1}. ${item.menu.name}",
-                "${item.temperature} · ${item.size} · ${item.quantity}잔\n${money(item.total)} (임시 가격)"))
+                "${item.temperature} · ${item.size} · ${item.quantity}잔\n${money(item.total)}"))
         }
         value.removals.forEach { addView(text(it, 18f)) }
     }
@@ -157,7 +136,7 @@ internal class ChatTranscript(screen: View, private val submit: (String) -> Bool
             addView(product(item.menu, "${index + 1}. ${item.menu.name}",
                 "${item.temperature} · ${item.size} · ${item.quantity}잔\n$unitPrice × ${item.quantity} = ${money(item.total)}"))
         }
-        addView(text("총 ${money(value.total)} (임시 가격)", 20f, bold = true))
+        addView(text("총 ${money(value.total)}", 20f, bold = true))
     }
 
     private fun product(menu: MenuItem, title: String, details: String): LinearLayout =

@@ -1,5 +1,6 @@
 package com.example.cafe_kiosk_ai
 
+import com.example.cafe_kiosk_ai.llm.LlmUnavailableException
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -29,11 +30,12 @@ data class QuestionContext(
 )
 
 class ConversationManager(
-    private val nlu: NluEngine = FakeNluEngine(),
+    private val nlu: NluEngine,
     val orders: OrderManager = OrderManager(),
     private val validator: OrderValidator = OrderValidator(),
     private val paymentProcessor: MockPaymentProcessor = MockPaymentProcessor(),
-    private val responseOutput: AiResponseOutput = AiResponseOutput {}
+    private val responseOutput: AiResponseOutput = AiResponseOutput {},
+    private val allowPayment: Boolean = true
 ) {
     private val history = mutableListOf<ChatMessage>()
     val messages: List<ChatMessage> get() = history.toList()
@@ -84,26 +86,29 @@ class ConversationManager(
     }
 
     /** Shared entry point for recognized speech, order actions, and automated tests. */
-    suspend fun handleUserInput(text: String): ConversationUpdate {
-        val input = text.trim()
+    suspend fun handleUserInput(text: String, onInputRecorded: () -> Unit = {}): ConversationUpdate {
+        val input = text
         val context = contextSnapshot() ?: return ConversationUpdate(stage, "주문하기 버튼을 먼저 눌러주세요.")
-        if (input.isEmpty()) return ConversationUpdate(stage, "말씀을 입력해 주세요.")
+        if (input.isBlank()) return ConversationUpdate(stage, "말씀을 입력해 주세요.")
         if (stage == OrderStage.PAYMENT || analyzingSessionId == context.sessionId) {
             return ConversationUpdate(stage, "현재 주문을 변경할 수 없습니다.")
         }
         analyzingSessionId = context.sessionId
         try {
+            history.add(ChatMessage(true, input))
+            onInputRecorded()
             val result = try {
                 withContext(Dispatchers.Default) { nlu.analyze(input, context) }
             } catch (cancelled: CancellationException) {
                 throw cancelled
+            } catch (error: LlmUnavailableException) {
+                NluResult(NluIntent.UNKNOWN, ambiguous = error.kioskMessage)
             } catch (_: Exception) {
                 NluResult(NluIntent.UNKNOWN, ambiguous = "주문 내용을 확인하지 못했습니다. 다시 말씀해 주세요.")
             }
             if (context.sessionId != sessionId || stage == OrderStage.PAYMENT) {
                 return ConversationUpdate(stage, "주문 세션이 바뀌었습니다.")
             }
-            history.add(ChatMessage(true, input))
             return applyResult(result)
         } finally {
             if (analyzingSessionId == context.sessionId) analyzingSessionId = null
@@ -111,7 +116,11 @@ class ConversationManager(
     }
 
     private fun applyResult(result: NluResult): ConversationUpdate {
-        result.ambiguous?.let { return say(it) }
+        result.ambiguous?.let { message ->
+            val confirmation = if (pending == PendingQuestion.ITEM_CONFIRMATION)
+                history.lastOrNull { it.card is ChatCard.ItemConfirmation }?.card else null
+            return say(message, confirmation)
+        }
         when (result.intent) {
             NluIntent.SHOW_MENU -> return pauseFor("주문할 수 있는 메뉴를 보여드릴게요.", ChatCard.Menu)
             NluIntent.MENU_PRICE -> return showPrice(result)
@@ -162,9 +171,11 @@ class ConversationManager(
             else say("먼저 확인할 메뉴와 옵션을 말씀해 주세요.")
         }
         if (result.intent == NluIntent.DENY) {
-            return if (pending == PendingQuestion.ITEM_CONFIRMATION)
-                say("어떤 내용을 바꿀까요? 메뉴 이름과 수량, 온도 또는 크기를 말씀해 주세요.")
-            else say("주문할 메뉴나 바꿀 내용을 말씀해 주세요.")
+            if (pending != PendingQuestion.ITEM_CONFIRMATION) return say("주문할 메뉴나 바꿀 내용을 말씀해 주세요.")
+            if (drafts.isEmpty()) return cancelDraftOrCart(NluResult(NluIntent.CANCEL))
+            ask(PendingQuestion.ITEM_CORRECTION, DialogueState.WAITING_FOR_ITEM_CONFIRMATION,
+                draftIds = drafts.map { it.id })
+            return say("어떤 내용을 바꿀까요? 메뉴 이름과 수량, 온도 또는 크기를 말씀해 주세요.")
         }
         if (result.intent == NluIntent.REMOVE) {
             if (drafts.isNotEmpty() || stagedRemovals.isNotEmpty())
@@ -203,14 +214,8 @@ class ConversationManager(
 
     private fun editDraft(result: NluResult): ConversationUpdate {
         if (!hasOptions(result)) return say("어떤 내용을 바꿀까요? 수량, 온도 또는 크기를 말씀해 주세요.")
-        val choices = drafts.filter {
-            (result.targetId == null || result.targetId == it.id) &&
-                (result.menu == null || result.menu == it.menu.name) &&
-                (result.targetTemperature == null || result.targetTemperature == it.temperature) &&
-                (result.targetSize == null || result.targetSize == it.size)
-        }
+        val choices = draftTargets(result)
         val selected = when {
-            result.targetOrdinal != null -> drafts.getOrNull(result.targetOrdinal - 1)?.takeIf { it in choices }
             choices.size == 1 -> choices.single()
             pending in optionQuestions && !hasTarget(result) && result.menu == null -> choices.find { it.id == activeDraftId }
             else -> null
@@ -220,6 +225,16 @@ class ConversationManager(
         targetAction = result
         ask(PendingQuestion.DRAFT_TARGET, DialogueState.WAITING_FOR_ITEM_CONFIRMATION, draftIds = choices.map { it.id })
         return say("어떤 상품을 바꿀까요? 메뉴 이름이나 확인 카드의 순서를 말씀해 주세요.")
+    }
+
+    private fun draftTargets(result: NluResult): List<DraftOrder> = drafts.filterIndexed { index, item ->
+        (result.targetId == null || result.targetId == item.id) &&
+            (result.targetOrdinal == null || result.targetOrdinal == index + 1) &&
+            (result.reference != ItemReference.LAST_CONFIRMED ||
+                (item.replaceCartId != null && item.replaceCartId == orders.lastConfirmedId)) &&
+            (result.menu == null || result.menu == item.menu.name) &&
+            (result.targetTemperature == null || result.targetTemperature == item.temperature) &&
+            (result.targetSize == null || result.targetSize == item.size)
     }
 
     private fun answerDraftTarget(result: NluResult): ConversationUpdate {
@@ -239,17 +254,23 @@ class ConversationManager(
     }
 
     private fun amend(current: DraftOrder, result: NluResult): ConversationUpdate {
-        validator.validateOptions(current.menu, result)?.let { return say(it) }
+        validateChange(current, result)?.let { return say(it) }
         drafts[drafts.indexOf(current)] = updatedDraft(current, result)
         activeDraftId = current.id
         return reviewDrafts()
     }
 
     private fun updatedDraft(draft: DraftOrder, result: NluResult): DraftOrder = draft.copy(
-        quantity = result.quantity ?: draft.quantity ?: 1,
+        quantity = requestedQuantity(draft, result),
         temperature = result.temperature ?: draft.temperature ?: draft.menu.temperatures.singleOrNull(),
         size = result.size ?: draft.size ?: draft.menu.sizes.singleOrNull()
     )
+
+    private fun requestedQuantity(draft: DraftOrder, result: NluResult): Int =
+        (result.quantity ?: draft.quantity ?: 1) + (result.quantityDelta ?: 0)
+
+    private fun validateChange(draft: DraftOrder, result: NluResult): String? =
+        validator.validateOptions(draft.menu, result.copy(quantity = requestedQuantity(draft, result)))
 
     private fun reviewDrafts(): ConversationUpdate {
         targetAction = null
@@ -304,12 +325,17 @@ class ConversationManager(
                         removals.add(removal)
                     } else {
                         if (!hasOptions(action)) return say("복합 주문에서 바꿀 옵션을 말씀해 주세요.")
-                        validator.validateOptions(item.menu, action)?.let { return say(it) }
-                        proposed.add(updatedDraft(replacementFor(item), action))
+                        val replacement = replacementFor(item)
+                        validateChange(replacement, action)?.let { return say(it) }
+                        proposed.add(updatedDraft(replacement, action))
                     }
                 }
                 else -> return say("복합 주문은 추가, 변경, 삭제만 함께 확인할 수 있습니다.")
             }
+        }
+        if (pending != PendingQuestion.MENU && removals == stagedRemovals &&
+            proposed.size == drafts.size && proposed.zip(drafts).all { (new, staged) -> new.copy(id = staged.id) == staged }) {
+            return reviewDrafts()
         }
         val ids = (stagedRemovals + removals).map { it.itemId } + (drafts + proposed).mapNotNull { it.replaceCartId }
         if (ids.size != ids.distinct().size) return say("같은 장바구니 항목의 변경은 한 번씩 말씀해 주세요.")
@@ -349,7 +375,8 @@ class ConversationManager(
             if (!hasOptions(result)) return say("바꿀 수량, 온도 또는 크기를 말씀해 주세요.")
             if ((result.menu != null || hasTarget(result)) && item !in cartTargets(result))
                 return say("선택한 항목의 옵션만 말씀해 주세요.")
-            return performCartAction(action.copy(quantity = result.quantity, temperature = result.temperature, size = result.size), item)
+            return performCartAction(action.copy(quantity = result.quantity, temperature = result.temperature,
+                size = result.size, quantityDelta = result.quantityDelta), item)
         }
         val selectors = result.copy(intent = NluIntent.REMOVE)
         val selection = cartTargets(selectors).filter { it.id in question!!.cartIds }
@@ -361,22 +388,21 @@ class ConversationManager(
     private fun performCartAction(action: NluResult, item: CartItem): ConversationUpdate {
         if (action.intent == NluIntent.REMOVE) {
             val removal = removalFor(item, action) ?: return say("현재 ${item.quantity}잔입니다. 뺄 수량을 다시 말씀해 주세요.")
-            orders.commit(emptyList(), listOf(removal))?.let { return say(it) }
-            clearQuestion()
-            state = DialogueState.WAITING_FOR_CART_CONFIRMATION
-            return say("${item.menu.name} ${removal.quantity}잔을 장바구니에서 뺐습니다.", cartCard())
+            if (drafts.isNotEmpty() || stagedRemovals.isNotEmpty())
+                return say("확인 중인 변경을 먼저 확정하거나 취소해 주세요.")
+            stagedRemovals.add(removal)
+            return reviewDrafts()
         }
         if (action.intent == NluIntent.CHANGE && !hasOptions(action)) {
             targetAction = action
             ask(PendingQuestion.CART_CHANGE, DialogueState.WAITING_FOR_CART_CONFIRMATION, cartIds = listOf(item.id))
             return say("${item.menu.name}의 어떤 내용을 바꿀까요? 수량, 온도 또는 크기를 말씀해 주세요.")
         }
-        validator.validateOptions(item.menu, action)?.let { return say(it) }
-        val next = if (action.intent == NluIntent.ADD) {
-            updatedDraft(DraftOrder(item.menu, 1, item.temperature, item.size), action)
-        } else updatedDraft(replacementFor(item), action)
-        drafts.add(next)
-        activeDraftId = next.id
+        val draft = if (action.intent == NluIntent.ADD) DraftOrder(item.menu, 1, item.temperature, item.size)
+            else replacementFor(item)
+        validateChange(draft, action)?.let { return say(it) }
+        drafts.add(updatedDraft(draft, action))
+        activeDraftId = draft.id
         return reviewDrafts()
     }
 
@@ -402,14 +428,16 @@ class ConversationManager(
                 return cartAction(result.copy(intent = NluIntent.REMOVE, removeAll = true))
             return askCancelAll()
         }
-        if (stagedRemovals.isNotEmpty()) clearDrafts()
+        val explicit = hasTarget(result) || result.menu != null
+        if (stagedRemovals.isNotEmpty()) {
+            if (explicit && draftTargets(result).isEmpty() &&
+                cartTargets(result).none { item -> stagedRemovals.any { it.itemId == item.id } }) {
+                return say("취소할 임시 변경을 찾지 못했습니다. 메뉴와 옵션을 확인해 주세요.")
+            }
+            clearDrafts()
+        }
         else {
-            val explicit = result.targetId != null || result.targetOrdinal != null || result.menu != null
-            val selected = if (!explicit) draft else drafts.filterIndexed { index, item ->
-                (result.targetId == null || item.id == result.targetId) &&
-                    (result.targetOrdinal == null || index + 1 == result.targetOrdinal) &&
-                    (result.menu == null || item.menu.name == result.menu)
-            }.singleOrNull()
+            val selected = if (!explicit) draft else draftTargets(result).singleOrNull()
             if (selected == null) return say("취소할 임시 상품의 메뉴 이름이나 순서를 말씀해 주세요.")
             drafts.remove(selected)
             activeDraftId = null
@@ -432,18 +460,22 @@ class ConversationManager(
 
     private fun showPrice(result: NluResult): ConversationUpdate {
         val menu = MenuCatalog.find(result.menu) ?: return pauseFor("메뉴 이름을 정확히 말씀해 주세요.")
-        return pauseFor("${menu.name}은 보통 ${menu.priceRegular}원, 큰 사이즈 ${menu.priceTall}원입니다. 시연용 임시 가격입니다.")
+        return pauseFor("${menu.name}은 보통 ${menu.priceRegular}원, 큰 사이즈 ${menu.priceTall}원입니다.")
     }
 
     fun showCart(): ConversationUpdate {
         if (stage == OrderStage.HOME || stage == OrderStage.PAYMENT) return ConversationUpdate(stage, "")
         if (question == null && drafts.isEmpty()) state = DialogueState.WAITING_FOR_CART_CONFIRMATION
-        return pauseFor(if (orders.cart.isEmpty()) "장바구니가 비어 있습니다." else "현재 장바구니를 확인해 주세요.", cartCard())
+        val cups = orders.cart.sumOf { it.quantity }
+        return pauseFor(if (cups == 0) "장바구니가 비어 있습니다." else "장바구니에 총 ${cups}잔이 담겨 있습니다.", cartCard())
     }
 
     private fun requestPayment(): ConversationUpdate {
+        if (!allowPayment) return say("시연 세션에서는 결제를 진행할 수 없습니다.")
         if (orders.cart.isEmpty()) return say("장바구니가 비어 있어 결제할 수 없습니다.")
-        if (drafts.isNotEmpty() || stagedRemovals.isNotEmpty()) return say("확인 중인 임시 주문을 먼저 확정하거나 취소해 주세요.")
+        if (drafts.isNotEmpty() || stagedRemovals.isNotEmpty() ||
+            pending == PendingQuestion.CART_TARGET || pending == PendingQuestion.CART_CHANGE)
+            return say("확인 중인 임시 주문을 먼저 확정하거나 취소해 주세요.")
         clearQuestion()
         state = DialogueState.PAYMENT_PENDING
         paymentState = PaymentState.WAITING_PAYMENT
@@ -492,8 +524,10 @@ class ConversationManager(
         activeDraftId = null
         stagedRemovals.clear()
     }
-    private fun hasTarget(result: NluResult): Boolean = result.targetId != null || result.targetOrdinal != null || result.reference != null
-    private fun hasOptions(result: NluResult): Boolean = result.quantity != null || result.temperature != null || result.size != null
+    private fun hasTarget(result: NluResult): Boolean = result.targetId != null || result.targetOrdinal != null ||
+        result.reference != null || result.targetTemperature != null || result.targetSize != null
+    private fun hasOptions(result: NluResult): Boolean =
+        result.quantity != null || result.quantityDelta != null || result.temperature != null || result.size != null
     private fun cartCard() = ChatCard.CartSummary(orders.cart.toList(), orders.total)
     private fun pauseFor(text: String, card: ChatCard? = null): ConversationUpdate {
         question = question?.copy(paused = true)

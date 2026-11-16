@@ -1,0 +1,31 @@
+{
+  "devices": [
+    {
+      "soc_id": 93,
+      "dsp_arch": "v68",
+      "cores": [
+        {
+          "core_id": 0,
+          "perf_profile": "burst",
+          "rpc_control_latency": 100
+        }
+      ]
+    }
+  ],
+  "memory": {
+    "mem_type": "shared_buffer"
+  },
+  "graphs": [
+    {
+      "graph_names": [
+        "prompt_ar128_cl2048_1_of_1",
+        "token_ar1_cl2048_1_of_1"
+      ],
+      "O": 3,
+      "vtcm_mb": 2
+    }
+  ],
+  "context": {
+    "weight_sharing_enabled": true
+  }
+}

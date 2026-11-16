@@ -11,6 +11,8 @@
     <string name="voice_error">음성 인식에 문제가 있습니다. 다시 시도해 주세요.</string>
     <string name="voice_mic_no_data">마이크에서 오디오를 받지 못했습니다. USB 사운드카드와 마이크 케이블 연결을 확인해 주세요.</string>
     <string name="voice_mic_zero_signal">입력 신호가 감지되지 않았습니다. 마이크에 가까이 말하거나 연결을 확인한 뒤 다시 시도해 주세요.</string>
+    <string name="voice_emulator_mic_no_data">가상 마이크에서 오디오를 받지 못했습니다. 에뮬레이터의 호스트 마이크 설정과 Windows 마이크 권한을 확인해 주세요.</string>
+    <string name="voice_emulator_mic_zero_signal">가상 마이크 입력이 없거나 너무 약합니다. 에뮬레이터의 호스트 마이크 설정과 PC 입력 음량을 확인해 주세요.</string>
     <string name="voice_mic_cleanup_timeout">이전 녹음 작업의 종료가 지연되고 있습니다. 잠시 뒤 다시 시도해 주세요.</string>
     <string name="voice_usb_awaiting_speech">USB 마이크 입력을 확인 중입니다. 마이크에 가까이 말씀해 주세요.</string>
     <string name="voice_preparation_failed">음성 입력을 준비하지 못했습니다. 마이크 연결을 확인한 뒤 다시 시도해 주세요.</string>
@@ -21,4 +23,41 @@
     <string name="voice_unavailable">이 기기에서 한국어 음성 인식을 사용할 수 없습니다.</string>
     <string name="voice_stopped">음성 인식이 중지되었습니다.</string>
     <string name="voice_retry">다시 시도</string>
+    <string name="genie_text_hint">주문 내용을 입력하세요</string>
+    <string name="genie_send">전송</string>
+    <string name="genie_clear">입력 지우기</string>
+    <string name="genie_examples">예시 발화</string>
+    <string name="genie_details">원본 출력·상세</string>
+    <string name="genie_setup_required">Qualcomm Genie · 보드용 ARM64 Genie APK가 필요합니다</string>
+    <string name="genie_status_format">Qualcomm Genie · %1$s\n%2$s</string>
+    <string name="genie_model_unchecked">첫 전송에서 모델 확인</string>
+    <string name="genie_model_checking">모델 확인 중</string>
+    <string name="genie_model_verified">모델 파일 확인 완료</string>
+    <string name="genie_library_loaded">Genie 라이브러리 로드 완료</string>
+    <string name="genie_model_ready">모델 준비 완료</string>
+    <string name="genie_initializing">Genie 초기화 중…</string>
+    <string name="genie_inference_running">실제 추론 중…</string>
+    <string name="genie_inference_waiting">텍스트 주문 대기 중</string>
+    <string name="genie_inference_failed">실행 실패 · 상세에서 원인 확인</string>
+    <string name="genie_inference_done">추론 %1$,d ms · %2$s</string>
+    <string name="genie_json_waiting">JSON 검증 중</string>
+    <string name="genie_json_valid">JSON 검증 통과</string>
+    <string name="genie_json_invalid">JSON 검증 거부</string>
+    <string name="genie_submit_rejected">진행 중인 주문이 끝난 뒤 다시 시도해 주세요.</string>
+    <string-array name="genie_example_utterances">
+        <item>아메리카노 두 잔 주세요</item>
+        <item>아아 두 개 주세요</item>
+        <item>뜨아 한 잔 주세요</item>
+        <item>녹차 두 잔 주세요</item>
+        <item>아이스 아메리카노 두 잔이랑 따뜻한 카페라떼 한 잔 주세요</item>
+        <item>아아 한 잔 큰 크기로랑 뜨아 한 잔 보통 크기로 주세요</item>
+        <item>레몬에이드 두 잔이랑 아아 다섯 잔 주세요</item>
+        <item>아아 세 잔 보통 크기로 주세요</item>
+        <item>아아 하나 빼고 레몬에이드 한 잔 주세요</item>
+        <item>지금 주문한 거 보여주세요</item>
+        <item>아아 따뜻하게 한 잔 주세요</item>
+        <item>뜨아 차갑게 한 잔 주세요</item>
+        <item>큰 걸로 바꿔 주세요</item>
+        <item>카페라떼 두 잔만 주세요</item>
+    </string-array>
 </resources>
