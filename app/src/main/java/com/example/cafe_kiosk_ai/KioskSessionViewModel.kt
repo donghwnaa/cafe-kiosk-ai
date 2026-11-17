@@ -1,6 +1,7 @@
 package com.example.cafe_kiosk_ai
 
 import android.app.Application
+import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import com.example.cafe_kiosk_ai.llm.GENIE_TAG
@@ -12,16 +13,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 internal class KioskSessionViewModel(application: Application) : AndroidViewModel(application) {
-    private data class SpokenResponse(val text: String, val forPayment: Boolean)
     private data class TranscriptNotice(val afterMessageCount: Int, val message: ChatMessage)
 
-    private val spokenResponses = ArrayDeque<SpokenResponse>()
+    private val spokenResponses = ArrayDeque<String>()
     private val transcriptNotices = mutableListOf<TranscriptNotice>()
     private var captureSpokenResponses = false
     val usesGenieTextInput = AndroidRuntimeEnvironment.hasQualcommPlatform
@@ -48,7 +47,10 @@ internal class KioskSessionViewModel(application: Application) : AndroidViewMode
     private val sessionScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var inputJob: Job? = null
     val isProcessingInput: Boolean get() = inputJob != null
-    private var paymentJob: Job? = null
+    var paymentAnnouncement: String? = null
+        private set
+    var paymentCompletionAt: Long? = null
+        private set
     private val revision = MutableStateFlow(0)
     val updates = revision.asStateFlow()
 
@@ -79,15 +81,15 @@ internal class KioskSessionViewModel(application: Application) : AndroidViewMode
         if (!enabled) spokenResponses.clear()
     }
 
-    fun takeSpokenResponse(forPayment: Boolean): String? {
-        // A response belongs to the screen it was generated for.
-        spokenResponses.removeAll { it.forPayment != forPayment }
-        return spokenResponses.removeFirstOrNull()?.text
-    }
+    fun takeSpokenResponse(): String? = spokenResponses.removeFirstOrNull()
 
     private fun enqueueResponse(message: ChatMessage) {
-        if (captureSpokenResponses) {
-            spokenResponses.addLast(SpokenResponse(message.text, conversation.stage == OrderStage.PAYMENT))
+        if (conversation.stage == OrderStage.PAYMENT) {
+            spokenResponses.clear()
+            // Keep payment audio pending if the activity pauses before playback finishes.
+            paymentAnnouncement = message.text
+        } else if (captureSpokenResponses) {
+            spokenResponses.addLast(message.text)
         }
     }
 
@@ -145,17 +147,28 @@ internal class KioskSessionViewModel(application: Application) : AndroidViewMode
 
     fun returnFromPayment() {
         conversation.returnFromPayment()
+        if (conversation.stage != OrderStage.PAYMENT) clearPaymentAnnouncement()
         publish()
     }
 
-    fun runPaymentTest(success: Boolean) {
-        if (!conversation.beginPaymentEvent()) return
-        publish()
-        paymentJob = sessionScope.launch {
-            delay(350)
-            conversation.paymentEvent(success)
-            publish()
+    fun finishPaymentAnnouncement() {
+        if (paymentAnnouncement == null) return
+        paymentAnnouncement = null
+        if (conversation.paymentState == PaymentState.WAITING_PAYMENT) {
+            paymentCompletionAt = SystemClock.elapsedRealtime() + 1_500L
         }
+    }
+
+    fun completeMockPayment() {
+        if (!conversation.beginPaymentEvent()) return
+        paymentCompletionAt = null
+        conversation.paymentEvent(success = true)
+        publish()
+    }
+
+    private fun clearPaymentAnnouncement() {
+        paymentAnnouncement = null
+        paymentCompletionAt = null
     }
 
     private fun resetSession() {
@@ -164,8 +177,7 @@ internal class KioskSessionViewModel(application: Application) : AndroidViewMode
         val previousInput = inputJob
         inputJob = null
         previousInput?.cancel()
-        paymentJob?.cancel()
-        paymentJob = null
+        clearPaymentAnnouncement()
         conversation.resetSession()
     }
 

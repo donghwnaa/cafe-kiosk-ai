@@ -2,6 +2,7 @@ package com.example.cafe_kiosk_ai
 
 import com.example.cafe_kiosk_ai.llm.LlmUnavailableException
 import java.util.UUID
+import kotlin.random.Random
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -479,7 +480,7 @@ class ConversationManager(
         clearQuestion()
         state = DialogueState.PAYMENT_PENDING
         paymentState = PaymentState.WAITING_PAYMENT
-        return say("개발용 테스트 결제입니다. 카드를 결제기에 넣어주세요.")
+        return say("카드를 결제기에 넣어주세요.")
     }
 
     fun returnFromPayment(): ConversationUpdate {
@@ -503,8 +504,8 @@ class ConversationManager(
         paymentState = paymentProcessor.finish(success)
         if (success) {
             state = DialogueState.ORDER_COMPLETED
-            orderNumber = "TEST-${System.currentTimeMillis().toString().takeLast(6)}"
-            return say("주문이 완료되었습니다. 테스트 주문번호 $orderNumber")
+            orderNumber = Random.nextInt(1, 1_501).toString()
+            return say("주문이 완료되었습니다. 주문번호 $orderNumber")
         }
         return say("테스트 결제에 실패했습니다. 다시 시도하거나 장바구니로 돌아가 주세요.")
     }

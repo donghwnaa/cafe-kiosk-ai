@@ -130,15 +130,21 @@
                 android:textStyle="bold" />
 
             <!-- 큰 글씨 주문번호 -->
-            <TextView
+            <androidx.appcompat.widget.AppCompatTextView
                 android:id="@+id/tvOrderNumber"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
+                android:gravity="center"
+                android:maxLines="1"
                 android:textColor="#3344DD"
                 android:textSize="54sp"
                 android:textStyle="bold"
-                tools:text="105" />
+                app:autoSizeMaxTextSize="54sp"
+                app:autoSizeMinTextSize="12sp"
+                app:autoSizeStepGranularity="1sp"
+                app:autoSizeTextType="uniform"
+                tools:text="1283" />
 
             <TextView
                 android:layout_width="wrap_content"
@@ -152,47 +158,20 @@
         </LinearLayout>
     </androidx.cardview.widget.CardView>
 
-    <!-- 3. '처음으로' 버튼 -->
     <TextView
         android:id="@+id/payment_status"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
         android:gravity="center"
-        android:text="개발용 테스트 결제 · 실제 결제되지 않습니다"
         android:textColor="#333333"
         android:textSize="18sp"
+        android:visibility="gone"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toBottomOf="@id/cardPaymentGuide" />
 
-    <LinearLayout
-        android:id="@+id/payment_test_controls"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:orientation="horizontal"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/payment_status">
-
-        <Button
-            android:id="@+id/btn_payment_success"
-            android:layout_width="0dp"
-            android:layout_height="64dp"
-            android:layout_weight="1"
-            android:text="테스트 성공"
-            android:textSize="18sp" />
-
-        <Button
-            android:id="@+id/btn_payment_failure"
-            android:layout_width="0dp"
-            android:layout_height="64dp"
-            android:layout_weight="1"
-            android:text="테스트 실패"
-            android:textSize="18sp" />
-    </LinearLayout>
-
+    <!-- 3. '처음으로' 버튼 -->
     <Button
         android:id="@+id/btnReset"
         android:layout_width="0dp"
@@ -203,18 +182,8 @@
         android:textColor="#222222"
         android:textSize="20sp"
         android:textStyle="bold"
+        android:visibility="gone"
         app:cornerRadius="12dp"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent" />
-
-    <Button
-        android:id="@+id/btn_payment_back"
-        android:layout_width="0dp"
-        android:layout_height="64dp"
-        android:layout_marginBottom="88dp"
-        android:text="장바구니로 돌아가기"
-        android:textSize="18sp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent" />

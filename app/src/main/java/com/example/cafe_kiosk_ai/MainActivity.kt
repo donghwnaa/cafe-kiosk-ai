@@ -3,6 +3,7 @@ package com.example.cafe_kiosk_ai
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.TextView
@@ -54,6 +55,7 @@ class MainActivity : AppCompatActivity() {
     private var activeSpeech: Long? = null
     private var speechSequence = 0L
     private var lastTtsError: TtsError? = null
+    private var paymentCompletion: Job? = null
 
     private val requestPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -225,25 +227,39 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun syncAudio() {
-        if (session.usesGenieTextInput || demoOpen) return
+        if (demoOpen) return
         val inConversation = isCurrentScreen(Page.CONVERSATION)
         if (!inConversation && !isCurrentScreen(Page.PAYMENT)) return
+        if (inConversation && session.usesGenieTextInput) return
         if (activeSpeech != null) return
         if (session.isProcessingInput) {
             cancelVoiceTurn()
             showVoiceState(VoiceState.PROCESSING)
             return
         }
-        val response = session.takeSpokenResponse(forPayment = !inConversation)
+        val response = if (inConversation) session.takeSpokenResponse() else session.paymentAnnouncement
         if (response != null) {
             speakResponse(response, if (inConversation) Page.CONVERSATION else Page.PAYMENT)
         } else if (inConversation) {
             syncVoiceInput()
+        } else {
+            schedulePaymentCompletion()
+        }
+    }
+
+    private fun schedulePaymentCompletion() {
+        val completionAt = session.paymentCompletionAt ?: return
+        if (paymentCompletion != null) return
+        paymentCompletion = lifecycleScope.launch {
+            delay((completionAt - SystemClock.elapsedRealtime()).coerceAtLeast(0L))
+            if (isCurrentScreen(Page.PAYMENT) && session.paymentCompletionAt == completionAt) {
+                session.completeMockPayment()
+            }
         }
     }
 
     private fun speakResponse(text: String, destination: Page) {
-        val tts = tts ?: return
+        val tts = tts ?: AndroidTtsEngine(this).also { tts = it }
         cancelVoiceTurn()
         val speech = ++speechSequence
         activeSpeech = speech
@@ -258,7 +274,7 @@ class MainActivity : AppCompatActivity() {
                     TtsPlaybackEvent.Completed, TtsPlaybackEvent.Stopped -> {
                         trace(speech, if (event == TtsPlaybackEvent.Completed) "TTS_COMPLETED" else "TTS_STOPPED")
                         lastTtsError = null
-                        finishSpeech()
+                        finishSpeech(destination)
                     }
                     is TtsPlaybackEvent.Error -> {
                         trace(speech, "TTS_ERROR", "reason=${event.reason}")
@@ -282,16 +298,19 @@ class MainActivity : AppCompatActivity() {
                             }
                             lastTtsError = event.reason
                         }
-                        finishSpeech()
+                        finishSpeech(destination)
                     }
                 }
             }
         }
     }
 
-    private fun finishSpeech() {
+    private fun finishSpeech(destination: Page) {
         activeSpeech = null
-        if (page != Page.CONVERSATION) showVoiceState(VoiceState.STOPPED)
+        if (destination == Page.PAYMENT) {
+            session.finishPaymentAnnouncement()
+            showVoiceState(VoiceState.STOPPED)
+        }
         syncAudio()
     }
 
@@ -438,6 +457,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun stopAudio() {
+        paymentCompletion?.cancel()
+        paymentCompletion = null
         releaseVoice()
         activeSpeech = null
         tts?.stop()
@@ -470,30 +491,23 @@ class MainActivity : AppCompatActivity() {
         val conversation = session.conversation
         val state = conversation.paymentState
         val success = state == PaymentState.PAYMENT_SUCCESS
-        val processing = state == PaymentState.PROCESSING_PAYMENT
         screen.findViewById<View>(R.id.ivCheck).isVisible = success
         screen.findViewById<View>(R.id.cardOrderComplete).isVisible = success
         screen.findViewById<TextView>(R.id.tvOrderNumber).text = conversation.orderNumber.orEmpty()
         screen.findViewById<TextView>(R.id.payment_status).apply {
             text = when (state) {
-                PaymentState.WAITING_PAYMENT -> "개발용 테스트 결제 · 실제 결제되지 않습니다"
+                PaymentState.WAITING_PAYMENT, PaymentState.PAYMENT_SUCCESS -> ""
                 PaymentState.PROCESSING_PAYMENT -> "테스트 결제 처리 중"
-                PaymentState.PAYMENT_SUCCESS -> "테스트 결제 성공"
                 PaymentState.PAYMENT_FAILED -> "테스트 결제 실패 · 다시 시도하거나 장바구니로 돌아가 주세요"
             }
-            isVisible = !success
+            isVisible = text.isNotEmpty()
         }
         screen.findViewById<TextView>(R.id.payment_guide_text).text =
-            if (success) "테스트 주문이 완료되었습니다" else "카드를 결제기에\n넣어주세요"
-        screen.findViewById<View>(R.id.payment_test_controls).isVisible = !success && !processing
-        screen.findViewById<View>(R.id.btn_payment_back).isVisible = !success && !processing
+            if (success) "주문이 완료되었습니다" else "카드를 결제기에\n넣어주세요"
         screen.findViewById<View>(R.id.btnReset).isVisible = success
         screen.findViewById<View>(R.id.btnHome).setOnClickListener {
             if (success) session.goHome() else session.returnFromPayment()
         }
         screen.findViewById<View>(R.id.btnReset).setOnClickListener { session.goHome() }
-        screen.findViewById<View>(R.id.btn_payment_back).setOnClickListener { session.returnFromPayment() }
-        screen.findViewById<View>(R.id.btn_payment_success).setOnClickListener { session.runPaymentTest(true) }
-        screen.findViewById<View>(R.id.btn_payment_failure).setOnClickListener { session.runPaymentTest(false) }
     }
 }
