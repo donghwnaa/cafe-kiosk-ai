@@ -103,15 +103,33 @@ internal class KioskSessionViewModel(application: Application) : AndroidViewMode
     }
 
     fun submit(text: String): Boolean {
-        if (text.isBlank() || isProcessingInput || conversation.stage in setOf(OrderStage.HOME, OrderStage.PAYMENT)) return false
+        if (text.isBlank()) return false
+        return runInput {
+            val before = conversation.orders.cart
+            val update = conversation.handleUserInput(text, onInputRecorded = ::publish)
+            if (genie != null && BuildConfig.DEBUG) {
+                Log.d(GENIE_TAG, "ORDER_APPLY stage=${update.stage} pending=${conversation.pending} " +
+                    "cartChanged=${before != conversation.orders.cart} cartLines=${conversation.orders.cart.size}")
+            }
+        }
+    }
+
+    fun retryGenieInitialization(): Boolean {
+        val engine = genie ?: return false
+        return runInput {
+            try {
+                engine.retryInitialization()
+            } catch (_: LlmUnavailableException) {
+                // The engine publishes the failed stage for the order screen.
+            }
+        }
+    }
+
+    private fun runInput(action: suspend () -> Unit): Boolean {
+        if (isProcessingInput || conversation.stage in setOf(OrderStage.HOME, OrderStage.PAYMENT)) return false
         val job = sessionScope.launch(start = CoroutineStart.LAZY) {
             try {
-                val before = conversation.orders.cart
-                val update = conversation.handleUserInput(text, onInputRecorded = ::publish)
-                if (BuildConfig.DEBUG) {
-                    Log.d(GENIE_TAG, "ORDER_RESULT stage=${update.stage} pending=${conversation.pending} " +
-                        "cartChanged=${before != conversation.orders.cart} cartLines=${conversation.orders.cart.size}")
-                }
+                action()
             } finally {
                 if (inputJob === coroutineContext[Job]) {
                     inputJob = null

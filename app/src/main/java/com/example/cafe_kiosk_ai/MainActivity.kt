@@ -194,7 +194,9 @@ class MainActivity : AppCompatActivity() {
                 transcript = ChatTranscript(screen, submit = ::submitOrder)
                 if (session.usesGenieTextInput) {
                     screen.findViewById<View>(R.id.voice_footer).isVisible = false
-                    genieTextInput = GenieTextInput(screen, ::submitOrder)
+                    genieTextInput = GenieTextInput(screen, ::submitOrder) {
+                        if (!demoOpen && session.retryGenieInitialization()) renderGenieInput()
+                    }
                 }
                 testTextInput.attach(this, home, screen.findViewById(R.id.genie_demo), ::submitOrder, session.genie) { open ->
                     demoOpen = open
@@ -458,6 +460,7 @@ class MainActivity : AppCompatActivity() {
         val genie = session.genie
         genieTextInput?.render(
             model = genie?.model?.value,
+            initializationError = genie?.initializationError,
             turn = genie?.turn?.value?.takeIf { it.sessionId == session.conversation.currentSessionId },
             busy = session.isProcessingInput || demoOpen
         )

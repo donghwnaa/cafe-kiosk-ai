@@ -16,6 +16,5 @@
 local.properties
 /app/offline-stt/
 /app/offline-tts/
-/app/src/main/assets/llm/
 # Qualcomm LLM large model file
 /app/src/main/assets/llm/llama32_hf_v68.bin

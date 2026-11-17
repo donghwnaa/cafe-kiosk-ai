@@ -11,6 +11,7 @@
 namespace {
 
 constexpr size_t kMaxOutputBytes = 64 * 1024;
+constexpr auto kLogTag = "MALLO_LLM";
 bool runtimeReleaseFailed = false;
 
 struct Session {
@@ -60,13 +61,13 @@ bool release(Session* session) {
     if (session->dialog) {
         const auto status = session->freeDialog(session->dialog);
         if (status != GENIE_STATUS_SUCCESS) {
-            __android_log_print(ANDROID_LOG_ERROR, "MALLO/Genie", "GenieDialog_free status=%d", static_cast<int>(status));
+            __android_log_print(ANDROID_LOG_ERROR, kLogTag, "GenieDialog_free status=%d", static_cast<int>(status));
             // Keep the runtime mapped if Genie could not release its dialog.
             __atomic_store_n(&runtimeReleaseFailed, true, __ATOMIC_RELEASE);
             free(session);
             return false;
         }
-        __android_log_print(ANDROID_LOG_INFO, "MALLO/Genie", "GENIE_DIALOG_RELEASED");
+        __android_log_print(ANDROID_LOG_INFO, kLogTag, "GENIE_DIALOG_RELEASED");
     }
     if (session->library) dlclose(session->library);
     free(session);
@@ -137,6 +138,10 @@ Java_com_example_cafe_1kiosk_1ai_llm_GenieNative_open(
         return 0;
     }
     const bool configured = configureDspPath(dsp);
+    if (configured) {
+        __android_log_print(ANDROID_LOG_INFO, kLogTag, "NATIVE_LIBRARY_LOAD ADSP_LIBRARY_PATH=%s",
+                            getenv("ADSP_LIBRARY_PATH"));
+    }
     free(dsp);
     if (!configured) {
         fail(env, "Could not set ADSP_LIBRARY_PATH");
@@ -151,7 +156,7 @@ Java_com_example_cafe_1kiosk_1ai_llm_GenieNative_open(
         release(session);
         return 0;
     }
-    __android_log_print(ANDROID_LOG_INFO, "MALLO/Genie", "GENIE_LIBRARY_LOADED");
+    __android_log_print(ANDROID_LOG_INFO, kLogTag, "GENIE_LIBRARY_LOADED libGenie.so");
     const auto callbackType = env->GetObjectClass(onLibraryLoaded);
     const auto callback = env->GetMethodID(callbackType, "run", "()V");
     if (callback) env->CallVoidMethod(onLibraryLoaded, callback);
@@ -169,9 +174,12 @@ Java_com_example_cafe_1kiosk_1ai_llm_GenieNative_open(
     auto status = session->createConfig(json, &configuration);
     if (status != GENIE_STATUS_SUCCESS) {
         failStatus(env, "GenieDialogConfig_createFromJson", status);
+    } else if (!configuration) {
+        fail(env, "GenieDialogConfig_createFromJson returned a null configuration");
     } else {
         status = session->createDialog(configuration, &session->dialog);
         if (status != GENIE_STATUS_SUCCESS) failStatus(env, "GenieDialog_create", status);
+        else if (!session->dialog) fail(env, "GenieDialog_create returned a null dialog");
     }
     if (configuration) session->freeConfig(configuration);
     free(json);

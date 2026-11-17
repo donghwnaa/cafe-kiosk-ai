@@ -5,7 +5,8 @@
 Qualcomm의 텍스트 입력, 주문 화면 버튼과 DEBUG 텍스트 입력은
 `MainActivity.submitOrder → KioskSessionViewModel → LlmNluEngine → GenieLlmEngine`으로 들어간다.
 Genie 응답을 검증한 뒤 기존 `ConversationManager → OrderManager`가 초안, 확인, 장바구니 반영을 처리한다.
-Genie를 사용하는 기기에서 초기화·추론 오류는 대화에 표시된다.
+Genie를 사용하는 기기에서 초기화·추론 오류는 대화에 표시된다. 모델 준비에 실패하면
+텍스트 입력 패널의 **초기화 재시도**로 모델 준비만 다시 실행한다. **원본 출력·상세**에서 실패 단계를 확인한다.
 
 ## 에뮬레이터
 
@@ -74,17 +75,21 @@ Genie 주문 단위 테스트는 한국어 입력과 미리 작성한 Function C
 3. PowerShell에서 보드용 패키징을 활성화하고 SDK 경로를 넘긴다.
 
    ```powershell
-   .\gradlew.bat -PmalloGenie=true "-PmalloQairtSdk=C:/path/to/qairt/2.40.0.251030" :app:assembleDebug :app:testDebugUnitTest
+   .\gradlew.bat -PmalloGenie=true "-PmalloQairtSdk=C:/path/to/qairt/2.40.0.251030" :app:packageGenieDebug :app:testDebugUnitTest
    ```
 
-   보드용과 에뮬레이터용 DEBUG APK의 출력 경로는 같다.
-   사용하려는 기기에 맞는 옵션으로 빌드한 직후 설치한다.
+   `packageGenieDebug`는 APK 내부의 실제 JSON, tokenizer, DSP skel, ARM64 JNI/Genie/QNN과
+   내장 모델의 저장 방식을 확인한다. 성공한 보드용 APK는
+   `app/build/outputs/mallo/app-qcs6490-embedded-debug.apk`에 있다. 기본 에뮬레이터 빌드는
+   `app/build/outputs/apk/debug/app-debug.apk`를 사용한다.
    현재 개발 PC에서 공식 배포본의 Genie 헤더만 따로 받은 경로는
-   `.gradle/qairt-2.40.0.251030/include/Genie/`다. SDK 루트 인자는 해당 경로의 두 단계 상위 폴더를 지정한다.
+   `.gradle/qairt-2.40.0.251030/include/Genie/`다. 이 구조라면 SDK 루트 인자는
+   `-PmalloQairtSdk=.gradle/qairt-2.40.0.251030`이다.
 
 ### 모델 분리형 APK
 
-APK 설치 공간이 부족하면 빌드 명령에 `-PmalloEmbedGenieModel=false`를 추가한다.
+APK 크기를 줄이려면 빌드 명령에 `-PmalloEmbedGenieModel=false`를 추가한다.
+출력은 `app/build/outputs/mallo/app-qcs6490-split-debug.apk`다.
 토크나이저, Genie 설정, 호스트 라이브러리와 DSP skel은 앱에 포함되며
 `llama32_hf_v68.bin`을 아래처럼 따로 전송한다. 기기에 앱을 설치해 한 번 시작한 뒤 진행한다.
 다른 저장소 볼륨을 쓰는 보드에서는 앱의 외부 파일 디렉터리를 기준으로 경로를 조정한다.
@@ -105,7 +110,7 @@ A~F 시나리오의 42개 발화가 순서대로 Genie를 호출한다. 보통 �
 넣어 실제 주문 정책을 따른다. 각 시나리오는 빈 테스트 장바구니에서 시작한다.
 **중지**로 현재 실행을 취소하거나, 선택 메뉴에서 특정 시나리오만 다시 실행할 수 있다.
 앱 안내문과 모델 원문은 구분된다. **원본 JSON·상세**에서 요청 ID별 실제 응답과 시간을 확인한다.
-`MALLO/Genie`의 `INFERENCE_STARTED`, `INFERENCE_COMPLETED`, `DEMO_RESULT`, `DEMO_RAW`를 같은 요청 ID로 대조한다.
+`MALLO_LLM`의 `INFERENCE_START`, `INFERENCE_COMPLETE`, `DEMO_RESULT`, `DEMO_RAW`를 같은 요청 ID로 대조한다.
 예외 시나리오에서 잘못된 주문이 거부되면 JSON은 거부로 표시되고, 장바구니를 지킨 시나리오는 통과로 표시된다.
 진단 중에는 일반 주문의 마이크와 TTS를 잠시 멈추고, 테스트 세션의 결제 진입을 차단한다.
 
@@ -130,10 +135,10 @@ A~F 시나리오의 42개 발화가 순서대로 Genie를 호출한다. 보통 �
 2. APK를 설치하고 앱을 연다. 네트워크를 끄고 USB ADB는 유지한다.
 
    ```powershell
-   adb install -r app/build/outputs/apk/debug/app-debug.apk
+   adb install -r app/build/outputs/mallo/app-qcs6490-embedded-debug.apk
    adb shell setprop log.tag.MALLO/GenieJson DEBUG
    adb shell am start -n com.example.cafe_kiosk_ai/.MainActivity
-   adb logcat -s MALLO/Genie:D MALLO/GenieJson:D
+   adb logcat -s MALLO_LLM:D MALLO/GenieJson:D AndroidRuntime:E
    ```
 
    첫 주문에서 모델 검사, 설정, 초기화, 추론, 파싱 및 주문 상태가 순서대로 표시되는지 확인한다.
@@ -145,9 +150,9 @@ A~F 시나리오의 42개 발화가 순서대로 Genie를 호출한다. 보통 �
    시작하지 않는다. **예시 발화**에서 문장을 고르면 입력창에 들어간다. **전송**을 누르면 같은 Genie 주문 경로가 실행된다.
    **아이스 아메리카노 두 잔 주세요. → 보통 크기로 주세요. → 맞아요.**를 각 응답을 기다리며 입력한다.
    앱에서 크기 질문과 마지막 장바구니의 두 잔을 확인한다. **원본 출력·상세**에서 모델 원문 또는 오류 원인을 확인한다.
-   `MODEL_FILE_VERIFIED`, `GENIE_LIBRARY_LOADED`, `GENIE_INIT_SUCCESS`, `INFERENCE_STARTED`,
-   `INFERENCE_COMPLETED`, `JSON_VALIDATION_PASS` 또는 `JSON_VALIDATION_REJECTED`, `ORDER_RESULT`를 로그에서 확인한다.
-   `INFERENCE_COMPLETED`의 시간은 Genie 질의 시간이며 첫 모델 설치·초기화 시간은 별도로 기록된다.
+   `ASSET_CHECK`, `MODEL_COPY`, `CONFIG_VALIDATION`, `NATIVE_LIBRARY_LOAD`, `GENIE_INIT_SUCCESS`,
+   `INFERENCE_START`, `INFERENCE_COMPLETE`, `JSON_VALIDATION_PASS` 또는 `JSON_VALIDATION_REJECTED`,
+   `ORDER_APPLY`를 로그에서 확인한다. `INFERENCE_COMPLETE`의 시간은 Genie 질의 시간이다.
 
    Android Studio의 **Running Devices**에서 보드 미러링을 열고 앱 입력창을 클릭한다.
    하드웨어 입력 전달은 Running Devices의 **Hardware input**에서 켤 수 있다.
@@ -184,8 +189,69 @@ A~F 시나리오의 42개 발화가 순서대로 Genie를 호출한다. 보통 �
 `adb shell 'cd /data/local/tmp/mallo-genie && chmod 755 genie-t2t-run && sh run_npu.sh'`를 실행한다.
 CLI는 셸에서 실행되므로, 앱 패키징과 FastRPC 네임스페이스는 APK에서도 확인해야 한다.
 
-## Git
+## 팀원의 GitHub 체크아웃과 모델 배치
 
-`app/src/main/assets/llm/`를 ignore에 추가했다. 작업 시작 시 모델 및 런타임 18개가 이미
-스테이징되어 있었으므로 `git diff --cached --name-only -- app/src/main/assets/llm`으로
-커밋에 포함된 경로를 확인한다. `llama32_hf_v68.bin`은 약 1.53 GB다.
+수정이 GitHub에 반영된 뒤 해당 브랜치를 업데이트한다. `npu_manifest.json`, tokenizer,
+설정 JSON, Genie/QNN 라이브러리는 Git에 있다. 별도로 받은 원본 모델을 이 경로에 둔다.
+
+수정이 `add_llm_fix`에 올라간 경우 기존 체크아웃에서 아래 명령을 실행한다.
+
+```powershell
+git switch add_llm_fix
+git pull --ff-only origin add_llm_fix
+```
+
+`app/src/main/assets/llm/llama32_hf_v68.bin`
+
+모델은 Git에서 제외되어 있다. 분리형 APK도 빌드 PC에서 원본을 먼저 검증한다.
+아래 결과가 1,527,758,848바이트 및
+`b9d75c9508fe4eb46431ec38a84e6292fc86ac022b01c4864204624aeecea4d3`인지 확인하고 APK를 빌드한다.
+
+```powershell
+git ls-files app/src/main/assets/llm
+git check-ignore -v app/src/main/assets/llm/llama32_hf_v68.bin
+(Get-Item app/src/main/assets/llm/llama32_hf_v68.bin).Length
+Get-FileHash app/src/main/assets/llm/llama32_hf_v68.bin
+```
+
+## 팀원 보드에서 원래 오류를 확인하는 방법
+
+기존 앱을 덮어쓰기 전에 오류를 재현하고 설치 APK 및 로그를 보관한다. 기기 한 대를 연결한 PowerShell 기준이다.
+
+```powershell
+adb devices -l
+adb logcat -d -v threadtime -s 'MALLO/Genie:D' 'MALLO_LLM:D' 'AndroidRuntime:E' > mallo-before.log
+$base = adb shell pm path com.example.cafe_kiosk_ai |
+    Where-Object { $_ -match '^package:.*/base\.apk\s*$' } |
+    Select-Object -First 1
+if ($base) { adb pull $base.Trim().Substring(8) mallo-before.apk }
+tar -tf mallo-before.apk | Select-String 'assets/llm/|lib/arm64-v8a/libmallo_genie'
+adb shell run-as com.example.cafe_kiosk_ai ls -lR no_backup/llm
+```
+
+`run-as`는 DEBUG 설치에서 사용할 수 있다. 기존 앱의 오류가 파일을 열 때 발생했다면 새 빌드에서
+`ASSET_CHECK_FAILED`와 원래 예외의 스택 트레이스가 나온다. 경로가 APK에 있어도 실패하면 해당 APK가
+실제로 설치된 앱의 APK인지 확인하고 원래 예외를 대조한다. `GENIE_INIT_FAILED`가 나오면
+`GenieDialogConfig_createFromJson` 또는 `GenieDialog_create`의 반환 상태와 인접 QNN/FastRPC 로그를 수집한다.
+새 빌드에서 오류를 재현한 직후 `adb logcat -d -v threadtime > mallo-after.log`를 실행하면
+앱 태그 외의 벤더 로그도 함께 수집된다.
+
+새 APK 설치 후 아래 문장을 실제 Genie로 실행한다. 독립 테스트는 **홈 → 주문하기**로 시작하고
+멀티턴 문장은 같은 세션에 순서대로 입력한다. 옵션·확인 질문에는 답변한 뒤 장바구니를 확인한다.
+
+| 테스트 | 발화 |
+| --- | --- |
+| 기본 | 아아 두 잔 주세요 / 뜨아 한 잔 주세요 / 녹차 두 잔 주세요 |
+| 복수 | 아이스 아메리카노 두 잔이랑 따뜻한 카페라떼 한 잔 주세요 / 아아 한 잔 큰 크기로랑 뜨아 한 잔 보통 크기로 주세요 |
+| 멀티턴 | 아아 세 잔 보통 크기로 주세요 → 아아 하나 빼고 레몬에이드 한 잔 주세요 → 지금 주문한 거 보여주세요 |
+| 재확인 | 아아 따뜻하게 한 잔 주세요 / 큰 걸로 바꿔 주세요 |
+
+각 테스트에서 발화, 원본 JSON, 검증 결과, 추론 시간과 최종 주문 상태를 저장한다. 멀티턴 수정은 첫 주문의
+확인을 마친 뒤 진행한다. 미러링으로 한글 조합과 붙여넣기를 각각 확인하고, 미러링 입력이 어려우면
+위의 DEBUG UTF-8 입력으로 같은 주문 경로를 검증한다.
+
+## 검증 환경
+
+개발 PC에서는 APK 빌드, 정적 검사 및 단위 테스트를 수행한다. Qualcomm 실기기는 팀원이 가지고 있으므로
+설치, Genie 초기화, 미러링 한글 입력과 실제 추론부터 장바구니 반영까지는 팀원이 위 절차로 확인한다.
+실기기 결과를 수집하기 전 상태는 `NOT TESTED`다.

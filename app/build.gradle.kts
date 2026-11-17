@@ -6,6 +6,8 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.util.HexFormat
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
 import javax.inject.Inject
 
 plugins {
@@ -21,6 +23,12 @@ val useSenseVoice = sttEngine == "sensevoice"
 val useOfflineTts = useSenseVoice && providers.gradleProperty("malloOfflineTts").orElse("true").get().toBooleanStrict()
 val useGenie = providers.gradleProperty("malloGenie").orElse("false").get().toBooleanStrict()
 val embedGenieModel = useGenie && providers.gradleProperty("malloEmbedGenieModel").orElse("true").get().toBooleanStrict()
+val geniePackageMode = if (embedGenieModel) "embedded" else "split"
+if (useGenie) {
+    // The incremental APK writer can retain space from removed large ZIP entries.
+    // Keep embedded, split and emulator packaging intermediates independent.
+    layout.buildDirectory.set(layout.projectDirectory.dir("build/genie-$geniePackageMode"))
+}
 val qairtSdk = if (useGenie) {
     requireNotNull(providers.gradleProperty("malloQairtSdk")
         .orElse(providers.environmentVariable("MALLO_QAIRT_SDK")).orNull?.takeIf { it.isNotBlank() }) {
@@ -30,21 +38,27 @@ val qairtSdk = if (useGenie) {
 val genieAssets = layout.projectDirectory.dir("src/main/assets/llm")
 val genieArmLibraries = listOf("libGenie.so", "libQnnHtp.so", "libQnnHtpNetRunExtensions.so",
     "libQnnHtpV68Stub.so", "libQnnSystem.so", "libc++_shared.so")
+val genieRuntimeAssets = listOf("npu_manifest.json", "tokenizer.json", "genie_config_npu.json",
+    "htp_backend_ext_config.json", "libQnnHtpV68Skel.so", "prompt_format.json", "MALLO_system_prompt.txt")
 val verifyGenieModel = tasks.register("verifyGenieModel") {
     description = "Checks the supplied Genie assets and verifies the model against its export manifest."
     val assets = genieAssets.asFile
     inputs.dir(assets)
     doLast {
-        val manifest = JsonSlurper().parse(assets.resolve("npu_manifest.json")) as Map<*, *>
         val model = assets.resolve("llama32_hf_v68.bin")
-        val required = genieArmLibraries + listOf(model.name, "tokenizer.json", "genie_config_npu.json",
-            "htp_backend_ext_config.json", "libQnnHtpV68Skel.so", "prompt_format.json", "MALLO_system_prompt.txt")
+        val manifestFile = assets.resolve("npu_manifest.json")
+        val tokenizer = assets.resolve("tokenizer.json")
+        val required = genieArmLibraries + genieRuntimeAssets + model.name
         for (name in required) {
             val file = assets.resolve(name)
             check(file.isFile && file.length() > 0) { "Missing or empty Genie file: $name" }
         }
+        val manifest = JsonSlurper().parse(manifestFile) as Map<*, *>
         check(model.length() == (manifest["context_bytes"] as Number).toLong() &&
             OfflineAudioFiles.sha256(model) == manifest["context_sha256"]) { "Genie model does not match npu_manifest.json" }
+        check(OfflineAudioFiles.sha256(tokenizer) == manifest["tokenizer_sha256"]) {
+            "Genie tokenizer does not match npu_manifest.json"
+        }
         logger.lifecycle("Verified Genie model: ${model.length()} bytes, SHA-256 ${manifest["context_sha256"]}")
     }
 }
@@ -94,7 +108,7 @@ android {
         if (qairtSdk != null) {
             ndk.abiFilters.add("arm64-v8a")
             externalNativeBuild.cmake.arguments.addAll(listOf(
-                "-DMALLO_QAIRT_SDK=${file(qairtSdk).invariantSeparatorsPath}", "-DANDROID_STL=c++_static"
+                "-DMALLO_QAIRT_SDK=${rootProject.file(qairtSdk).invariantSeparatorsPath}", "-DANDROID_STL=c++_static"
             ))
         }
     }
@@ -146,6 +160,34 @@ android {
 if (prepareGenieLibraries != null) {
     android.sourceSets.getByName("main").jniLibs.srcDir(prepareGenieLibraries.map { it.destinationDir })
     tasks.named("preBuild").configure { dependsOn(verifyGenieModel, prepareGenieLibraries) }
+}
+
+tasks.register("packageGenieDebug") {
+    description = "Verifies and copies the Qualcomm debug APK to a board-specific filename."
+    if (useGenie) dependsOn("assembleDebug")
+    doLast {
+        check(useGenie) { "Build this task with -PmalloGenie=true and a QAIRT SDK path." }
+        val apk = layout.buildDirectory.file("outputs/apk/debug/app-debug.apk").get().asFile
+        ZipFile(apk).use { zip ->
+            val required = genieRuntimeAssets.map { "assets/llm/$it" } +
+                (genieArmLibraries + "libmallo_genie.so").map { "lib/arm64-v8a/$it" }
+            for (name in required) {
+                check((zip.getEntry(name)?.size ?: 0) > 0) { "Missing or empty APK entry: $name" }
+            }
+            val model = zip.getEntry("assets/llm/llama32_hf_v68.bin")
+            if (embedGenieModel) {
+                check(model != null && model.method == ZipEntry.STORED &&
+                    model.size == genieAssets.file("llama32_hf_v68.bin").asFile.length()) {
+                    "APK must contain the complete Genie model as an uncompressed asset."
+                }
+            } else {
+                check(model == null) { "Split model APK unexpectedly contains llama32_hf_v68.bin." }
+            }
+        }
+        val verified = layout.projectDirectory.file("build/outputs/mallo/app-qcs6490-$geniePackageMode-debug.apk").asFile
+        apk.copyTo(verified, overwrite = true)
+        logger.lifecycle("Verified Qualcomm APK: ${verified.absolutePath}")
+    }
 }
 
 if (prepareOfflineStt != null) {

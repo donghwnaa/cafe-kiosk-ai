@@ -35,6 +35,8 @@
     <string name="genie_model_verified">모델 파일 확인 완료</string>
     <string name="genie_library_loaded">Genie 라이브러리 로드 완료</string>
     <string name="genie_model_ready">모델 준비 완료</string>
+    <string name="genie_model_failed">모델 초기화 실패</string>
+    <string name="genie_retry">초기화 재시도</string>
     <string name="genie_initializing">Genie 초기화 중…</string>
     <string name="genie_inference_running">실제 추론 중…</string>
     <string name="genie_inference_waiting">텍스트 주문 대기 중</string>

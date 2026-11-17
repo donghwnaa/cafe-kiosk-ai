@@ -13,6 +13,7 @@ import java.security.MessageDigest
 
 internal object LlmModelInstaller {
     private const val MODEL = "llama32_hf_v68.bin"
+    private const val MANIFEST = "npu_manifest.json"
     private const val TOKENIZER = "tokenizer.json"
     private const val CONFIG = "genie_config_npu.json"
     private const val EXTENSIONS = "htp_backend_ext_config.json"
@@ -35,6 +36,35 @@ internal object LlmModelInstaller {
 
     @Synchronized
     fun prepare(context: Context, checkActive: () -> Unit, onModelVerified: () -> Unit): Installed {
+        val identity = genieStage("ASSET_CHECK") {
+            for (name in listOf(TOKENIZER, CONFIG, EXTENSIONS, SKEL, "prompt_format.json", "MALLO_system_prompt.txt")) {
+                checkActive()
+                context.assets.open("llm/$name").use { check(it.read() != -1) { "Empty APK asset llm/$name" } }
+            }
+            val manifest = assetJson(context, MANIFEST)
+            ModelIdentity(manifest.get("context_bytes").asLong, manifest.get("context_sha256").asString).also {
+                if (BuildConfig.MALLO_GENIE_EMBEDDED_MODEL) {
+                    val length = context.assets.openFd("llm/$MODEL").use { asset -> asset.length }
+                    check(length == it.bytes) { "Embedded llm/$MODEL has $length bytes, expected ${it.bytes}" }
+                }
+            }
+        }
+        val (directory, dsp) = genieStage("MODEL_COPY") { installFiles(context, identity, checkActive, onModelVerified) }
+        return genieStage("CONFIG_VALIDATION") {
+            val configuration = assetJson(context, CONFIG)
+            resolveConfiguration(configuration, directory)
+            // QNN reads this JSON from disk via the absolute extensions path.
+            File(directory, EXTENSIONS).bufferedReader().use { JsonParser.parseReader(it).asJsonObject }
+            Installed(configuration.toString(), dsp)
+        }
+    }
+
+    private fun installFiles(
+        context: Context,
+        identity: ModelIdentity,
+        checkActive: () -> Unit,
+        onModelVerified: () -> Unit
+    ): Pair<File, File> {
         val directory = File(context.noBackupFilesDir, "llm").apply {
             check(isDirectory || mkdirs()) { "Cannot create LLM directory" }
         }
@@ -42,18 +72,10 @@ internal object LlmModelInstaller {
             check(isDirectory || mkdirs()) { "Cannot create DSP directory" }
         }
         val model = File(directory, MODEL)
-        val manifest = context.assets.open("llm/npu_manifest.json").bufferedReader().use {
-            JsonParser.parseReader(it).asJsonObject
-        }
-        val identity = ModelIdentity(manifest.get("context_bytes").asLong, manifest.get("context_sha256").asString)
         val reused = identity.matches(model, checkActive)
         if (!reused) {
-            val openModel = if (BuildConfig.MALLO_GENIE_EMBEDDED_MODEL) {
-                check(context.assets.openFd("llm/$MODEL").use { it.length } == identity.bytes) {
-                    "Unexpected embedded model length"
-                }
-                val source: () -> InputStream = { context.assets.open("llm/$MODEL") }
-                source
+            val openModel: () -> InputStream = if (BuildConfig.MALLO_GENIE_EMBEDDED_MODEL) {
+                { context.assets.open("llm/$MODEL") }
             } else {
                 val stagedModel = context.getExternalFilesDir(null)?.resolve("llm/$MODEL")
                 check(stagedModel != null && stagedModel.isFile && stagedModel.length() == identity.bytes) {
@@ -71,15 +93,11 @@ internal object LlmModelInstaller {
         copyAsset(context, EXTENSIONS, File(directory, EXTENSIONS), checkActive)
         copyAsset(context, SKEL, File(dsp, SKEL), checkActive)
 
-        val configuration = context.assets.open("llm/$CONFIG").bufferedReader().use {
-            JsonParser.parseReader(it).asJsonObject
-        }
-        resolveConfiguration(configuration, directory)
-        val dialog = configuration.getAsJsonObject("dialog")
-        Log.i(GENIE_TAG, "Config QnnHtp soc=93 dsp=v68 ctx=${dialog.getAsJsonObject("context").get("size")} " +
-            "maxTokens=${dialog.get("max-num-tokens")} model=$MODEL tokenizer=$TOKENIZER extensions=$EXTENSIONS")
-        return Installed(configuration.toString(), dsp)
+        return directory to dsp
     }
+
+    private fun assetJson(context: Context, name: String): JsonObject =
+        context.assets.open("llm/$name").bufferedReader().use { JsonParser.parseReader(it).asJsonObject }
 
     internal fun resolveConfiguration(configuration: JsonObject, directory: File) {
         val dialog = configuration.getAsJsonObject("dialog")

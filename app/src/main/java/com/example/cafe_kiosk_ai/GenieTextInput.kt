@@ -12,18 +12,20 @@ import androidx.core.widget.doAfterTextChanged
 import com.example.cafe_kiosk_ai.llm.GenieModelState
 import com.example.cafe_kiosk_ai.llm.GenieTurn
 
-internal class GenieTextInput(screen: View, submit: (String) -> Boolean) {
+internal class GenieTextInput(screen: View, submit: (String) -> Boolean, retryInitialization: () -> Unit) {
     private val panel = screen.findViewById<View>(R.id.genie_text_input)
     private val input = panel.findViewById<EditText>(R.id.genie_order_text)
     private val send = panel.findViewById<Button>(R.id.genie_send)
     private val status = panel.findViewById<TextView>(R.id.genie_status)
     private val details = panel.findViewById<Button>(R.id.genie_details)
+    private val retry = panel.findViewById<Button>(R.id.genie_retry)
     private var canSubmit = false
     private var detailText: String? = null
 
     init {
         panel.isVisible = true
         input.doAfterTextChanged { updateSend() }
+        retry.setOnClickListener { retryInitialization() }
         send.setOnClickListener {
             if (submit(input.text.toString())) {
                 input.text.clear()
@@ -55,10 +57,12 @@ internal class GenieTextInput(screen: View, submit: (String) -> Boolean) {
         }
     }
 
-    fun render(model: GenieModelState?, turn: GenieTurn?, busy: Boolean) {
+    fun render(model: GenieModelState?, initializationError: String?, turn: GenieTurn?, busy: Boolean) {
         canSubmit = model != null && !busy
         updateSend()
-        detailText = turn?.error ?: turn?.inference?.json
+        retry.isVisible = model == GenieModelState.FAILED
+        retry.isEnabled = !busy
+        detailText = initializationError ?: turn?.error ?: turn?.inference?.json
         details.isVisible = detailText != null
         if (model == null) {
             status.setText(R.string.genie_setup_required)
@@ -70,10 +74,13 @@ internal class GenieTextInput(screen: View, submit: (String) -> Boolean) {
             GenieModelState.FILE_VERIFIED -> R.string.genie_model_verified
             GenieModelState.LIBRARY_LOADED -> R.string.genie_library_loaded
             GenieModelState.READY -> R.string.genie_model_ready
+            GenieModelState.FAILED -> R.string.genie_model_failed
         }
         val context = status.context
         val result = when {
-            turn?.error != null -> context.getString(R.string.genie_inference_failed)
+            model == GenieModelState.FAILED -> initializationError.orEmpty()
+            busy && model != GenieModelState.READY -> context.getString(R.string.genie_initializing)
+            turn?.error != null && !busy -> context.getString(R.string.genie_inference_failed)
             turn?.inference != null -> {
                 val validation = when (turn.validated) {
                     true -> R.string.genie_json_valid
@@ -83,7 +90,6 @@ internal class GenieTextInput(screen: View, submit: (String) -> Boolean) {
                 context.getString(R.string.genie_inference_done, turn.inference.inferenceMs, context.getString(validation))
             }
             busy && turn?.running == true -> context.getString(R.string.genie_inference_running)
-            busy && model != GenieModelState.READY -> context.getString(R.string.genie_initializing)
             busy -> context.getString(R.string.genie_inference_running)
             else -> context.getString(R.string.genie_inference_waiting)
         }
