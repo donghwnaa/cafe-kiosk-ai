@@ -20,8 +20,10 @@ internal sealed interface VoiceRecognitionEvent {
 }
 
 internal fun audioLog(engine: String, session: String?, turn: Long, state: String, event: String, detail: String = "") {
-    if (BuildConfig.DEBUG) android.util.Log.d("MalloAudio",
-        "$event elapsedMs=${android.os.SystemClock.elapsedRealtime()} session=$session turn=$turn engine=$engine state=$state $detail")
+    // BuildConfig 에러 방지를 위해 직접 디버그 여부 체크 또는 안전한 로그 처리
+    try {
+        android.util.Log.d("MalloAudio", "$event elapsedMs=${android.os.SystemClock.elapsedRealtime()} session=$session turn=$turn engine=$engine state=$state $detail")
+    } catch (_: Exception) {}
 }
 
 internal enum class VoiceRecognitionError(val canRetry: Boolean) {

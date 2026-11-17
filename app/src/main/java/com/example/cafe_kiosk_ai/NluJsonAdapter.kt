@@ -4,7 +4,6 @@ import android.util.Log
 import com.example.cafe_kiosk_ai.llm.GENIE_TAG
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
-import com.google.gson.Strictness
 import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
 import java.util.UUID
@@ -66,7 +65,6 @@ object NluJsonAdapter : FunctionCallAdapter {
         if (BuildConfig.DEBUG) runCatching {
             Log.d(GENIE_TAG, "JSON_VALIDATION_PASS intent=${result.intent} actions=${result.actions.size}")
             if (Log.isLoggable("MALLO/GenieJson", Log.DEBUG)) {
-                // Serialize only validated order fields. The model can echo arbitrary input.
                 Log.d("MALLO/GenieJson", encodeCall(result, redactIds = true).toString())
             }
         }
@@ -81,7 +79,7 @@ object NluJsonAdapter : FunctionCallAdapter {
 
     private fun parse(json: String): JsonObject {
         require(json.length <= 16_384)
-        val reader = JsonReader(json.reader()).apply { strictness = Strictness.STRICT }
+        val reader = JsonReader(json.reader()).apply { isLenient = false }
         val root = readCall(reader)
         require(reader.peek() == JsonToken.END_DOCUMENT)
         return root
@@ -173,10 +171,10 @@ object NluJsonAdapter : FunctionCallAdapter {
         result.targetId?.let { require(UUID.fromString(it).toString() == it) }
         require(!result.removeAll || result.quantity == null)
         val targeted = result.menu != null || result.targetOrdinal != null || result.targetId != null ||
-            result.reference == ItemReference.LAST_CONFIRMED
+                result.reference == ItemReference.LAST_CONFIRMED
         when (name) {
             "add_menu" -> require(if (allowBatch) targeted || result.quantity != null ||
-                result.temperature != null || result.size != null else result.menu != null)
+                    result.temperature != null || result.size != null else result.menu != null)
             "remove_menu" -> require(targeted && (result.quantity != null || result.removeAll))
             "change_quantity" -> {
                 require((result.quantity == null) != (result.quantityDelta == null))

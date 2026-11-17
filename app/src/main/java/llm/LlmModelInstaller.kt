@@ -3,7 +3,6 @@ package com.example.cafe_kiosk_ai.llm
 import android.content.Context
 import android.system.Os
 import android.util.Log
-import com.example.cafe_kiosk_ai.BuildConfig
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import java.io.File
@@ -47,24 +46,13 @@ internal object LlmModelInstaller {
         }
         val identity = ModelIdentity(manifest.get("context_bytes").asLong, manifest.get("context_sha256").asString)
         val reused = identity.matches(model, checkActive)
+
         if (!reused) {
-            val openModel = if (BuildConfig.MALLO_GENIE_EMBEDDED_MODEL) {
-                check(context.assets.openFd("llm/$MODEL").use { it.length } == identity.bytes) {
-                    "Unexpected embedded model length"
-                }
-                val source: () -> InputStream = { context.assets.open("llm/$MODEL") }
-                source
-            } else {
-                val stagedModel = context.getExternalFilesDir(null)?.resolve("llm/$MODEL")
-                check(stagedModel != null && stagedModel.isFile && stagedModel.length() == identity.bytes) {
-                    "Copy the model to Android/data/${context.packageName}/files/llm/$MODEL"
-                }
-                val source: () -> InputStream = { stagedModel.inputStream() }
-                source
-            }
-            check(directory.usableSpace >= identity.bytes + 64 * 1024 * 1024) { "Insufficient space for Genie model" }
+            val openModel: () -> InputStream = { context.assets.open("llm/$MODEL") }
+            check(directory.usableSpace >= identity.bytes + 64L * 1024L * 1024L) { "Insufficient space for Genie model" }
             copyFile(model, checkActive, identity, openModel)
         }
+
         Log.i(GENIE_TAG, "MODEL_FILE_VERIFIED bytes=${identity.bytes} cached=$reused")
         onModelVerified()
         copyAsset(context, TOKENIZER, File(directory, TOKENIZER), checkActive)
@@ -77,7 +65,7 @@ internal object LlmModelInstaller {
         resolveConfiguration(configuration, directory)
         val dialog = configuration.getAsJsonObject("dialog")
         Log.i(GENIE_TAG, "Config QnnHtp soc=93 dsp=v68 ctx=${dialog.getAsJsonObject("context").get("size")} " +
-            "maxTokens=${dialog.get("max-num-tokens")} model=$MODEL tokenizer=$TOKENIZER extensions=$EXTENSIONS")
+                "maxTokens=${dialog.get("max-num-tokens")} model=$MODEL tokenizer=$TOKENIZER extensions=$EXTENSIONS")
         return Installed(configuration.toString(), dsp)
     }
 

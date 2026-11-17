@@ -55,24 +55,30 @@ internal class GenieDemoRunner(
                 var jsonValid: Boolean? = null
                 var decodedIntent: NluIntent? = null
                 var requestId = ""
-                val nlu = LlmNluEngine(LlmEngine { text, context ->
-                    try {
-                        infer(text, context, requestId).also { inference = it }.json
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (error: Exception) {
-                        val code = (error as? LlmUnavailableException)?.code ?: "GENIE_ERROR"
-                        modelError = "${code}: ${error.cause?.message ?: error.message.orEmpty()}"
-                        throw error
+
+                val nlu = LlmNluEngine(
+                    LlmEngine { text, context ->
+                        try {
+                            infer(text, context, requestId).also { inference = it }.json
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (error: Exception) {
+                            val code = (error as? LlmUnavailableException)?.code ?: "GENIE_ERROR"
+                            modelError = "${code}: ${error.cause?.message ?: error.message.orEmpty()}"
+                            throw error
+                        }
+                    },
+                    FunctionCallAdapter { raw ->
+                        val decoded = runCatching { NluJsonAdapter.decodeGenieOrThrow(raw) }
+                        jsonValid = decoded.isSuccess
+                        decoded.getOrNull()?.also { decodedIntent = it.intent }
+                            ?: NluResult(NluIntent.UNKNOWN, ambiguous = "주문 내용을 확인하지 못했습니다. 다시 말씀해 주세요.")
                     }
-                }, FunctionCallAdapter { raw ->
-                    val decoded = runCatching { NluJsonAdapter.decodeGenieOrThrow(raw) }
-                    jsonValid = decoded.isSuccess
-                    decoded.getOrNull()?.also { decodedIntent = it.intent }
-                        ?: NluResult(NluIntent.UNKNOWN, ambiguous = "주문 내용을 확인하지 못했습니다. 다시 말씀해 주세요.")
-                })
+                )
+
                 val conversation = ConversationManager(nlu, allowPayment = false)
                 conversation.startNewSession()
+
                 for (step in scenario.steps) {
                     currentCoroutineContext().ensureActive()
                     requestId = "$runId-${++stepNumber}"
@@ -95,9 +101,14 @@ internal class GenieDemoRunner(
                         drafts.toSet() != step.drafts.toSet() || drafts.size != step.drafts.size -> "확인 전 주문이 예상과 다릅니다."
                         else -> null
                     }
+
+                    // 타입 추론 에러 방지를 위해 명시적으로 타입 캐스팅 및 파싱 처리
                     val function = inference?.let { result ->
-                        runCatching { JsonParser.parseString(result.json).asJsonObject.get("function").asString }.getOrNull()
+                        runCatching {
+                            JsonParser.parseString(result.json).asJsonObject.get("function")?.asString
+                        }.getOrNull()
                     }
+
                     onTurn(DemoTurn(requestId, step.text, conversation.messages.drop(before).filterNot { it.fromUser },
                         inference, function, jsonValid, update.response, failure))
                     if (modelError != null) return true

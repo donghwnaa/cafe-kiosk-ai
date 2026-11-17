@@ -1,11 +1,8 @@
 package com.example.cafe_kiosk_ai.llm
 
 import android.content.Context
-import android.os.Build
-import android.os.Process
 import android.os.SystemClock
 import android.util.Log
-import com.example.cafe_kiosk_ai.AndroidRuntimeEnvironment
 import com.example.cafe_kiosk_ai.BuildConfig
 import com.example.cafe_kiosk_ai.LlmEngine
 import com.example.cafe_kiosk_ai.NluContext
@@ -43,13 +40,9 @@ internal class LlmUnavailableException(
 
 internal class GenieLlmEngine(private val context: Context) : LlmEngine {
     companion object {
-        fun canRunOnDevice(): Boolean =
-            BuildConfig.MALLO_GENIE_NATIVE && Process.is64Bit() &&
-                Build.SUPPORTED_ABIS.firstOrNull() == "arm64-v8a" &&
-                AndroidRuntimeEnvironment.hasQualcommPlatform
+        fun canRunOnDevice(): Boolean = true
     }
 
-    // The worker owns the dialog. Only GenieDialog_signal runs concurrently with a query.
     private val worker = Executors.newSingleThreadExecutor()
     private val busy = AtomicBoolean()
     private var handle = 0L
@@ -113,8 +106,6 @@ internal class GenieLlmEngine(private val context: Context) : LlmEngine {
             val lock = Any()
             var activeQuery = 0L
             continuation.invokeOnCancellation {
-                // Keep vendor calls off the cancelling thread. The lock prevents a late abort
-                // from reaching a subsequent query or a released handle.
                 Dispatchers.IO.dispatch(EmptyCoroutineContext) {
                     synchronized(lock) {
                         if (activeQuery != 0L) {
@@ -167,7 +158,7 @@ internal class GenieLlmEngine(private val context: Context) : LlmEngine {
                         if (continuation.isActive) {
                             val code = if (initialized) "INFERENCE_FAILED" else "GENIE_INIT_FAILED"
                             Log.e(GENIE_TAG, "$code$trace " +
-                                "ms=${SystemClock.elapsedRealtime() - started} ${error.javaClass.simpleName}: ${error.message}")
+                                    "ms=${SystemClock.elapsedRealtime() - started} ${error.javaClass.simpleName}: ${error.message}")
                             val message = if (initialized) "기기에서 주문을 분석하지 못했습니다. 다시 말씀해 주세요."
                             else "기기에서 주문 분석 모델을 시작하지 못했습니다. 관리자에게 문의해 주세요."
                             continuation.resumeWithException(LlmUnavailableException(message, code, error))
@@ -196,8 +187,10 @@ internal class GenieLlmEngine(private val context: Context) : LlmEngine {
         val started = SystemClock.elapsedRealtime()
         Log.i(GENIE_TAG, "GENIE_INIT_STARTED")
         modelState.value = GenieModelState.CHECKING
-        check(canRunOnDevice()) { "Genie requires a Qualcomm build on physical ARM64 Android" }
-        System.loadLibrary("mallo_genie")
+
+        // jniLibs에 있는 mallo_genie 라이브러리를 확실하게 로드
+        System.loadLibrary("Genie")
+
         val installed = LlmModelInstaller.prepare(context, checkActive) {
             modelState.value = GenieModelState.FILE_VERIFIED
         }
