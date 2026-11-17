@@ -4,6 +4,7 @@ import android.util.Log
 import com.example.cafe_kiosk_ai.llm.GENIE_TAG
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.google.gson.Strictness
 import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
 import java.util.UUID
@@ -79,7 +80,7 @@ object NluJsonAdapter : FunctionCallAdapter {
 
     private fun parse(json: String): JsonObject {
         require(json.length <= 16_384)
-        val reader = JsonReader(json.reader()).apply { isLenient = false }
+        val reader = JsonReader(json.reader()).apply { strictness = Strictness.STRICT }
         val root = readCall(reader)
         require(reader.peek() == JsonToken.END_DOCUMENT)
         return root

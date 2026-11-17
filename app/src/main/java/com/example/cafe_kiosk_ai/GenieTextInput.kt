@@ -92,7 +92,6 @@ internal class GenieTextInput(screen: View, submit: (String) -> Boolean) {
     }
 
     private fun updateSend() {
-        // 모델 준비 상태(canSubmit) 확인을 제외하고 텍스트 입력 여부만으로 버튼 활성화
-        send.isEnabled = input.text.isNotBlank()
+        send.isEnabled = canSubmit && input.text.isNotBlank()
     }
 }

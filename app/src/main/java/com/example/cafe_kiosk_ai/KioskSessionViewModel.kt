@@ -25,10 +25,7 @@ internal class KioskSessionViewModel(application: Application) : AndroidViewMode
     private val transcriptNotices = mutableListOf<TranscriptNotice>()
     private var captureSpokenResponses = false
     val usesGenieTextInput = AndroidRuntimeEnvironment.hasQualcommPlatform
-
-    // canRunOnDevice() 체크를 임시로 우회하여 강제로 GenieLlmEngine 객체 생성
-    internal val genie = GenieLlmEngine(application)
-
+    internal val genie = if (GenieLlmEngine.canRunOnDevice()) GenieLlmEngine(application) else null
     private val developmentNlu = if (usesGenieTextInput) null else createDevelopmentNlu()?.also {
         Log.i(GENIE_TAG, "ENGINE=FAKE_NLU DEBUG_ONLY")
     }
@@ -113,7 +110,7 @@ internal class KioskSessionViewModel(application: Application) : AndroidViewMode
                 val update = conversation.handleUserInput(text, onInputRecorded = ::publish)
                 if (BuildConfig.DEBUG) {
                     Log.d(GENIE_TAG, "ORDER_RESULT stage=${update.stage} pending=${conversation.pending} " +
-                            "cartChanged=${before != conversation.orders.cart} cartLines=${conversation.orders.cart.size}")
+                        "cartChanged=${before != conversation.orders.cart} cartLines=${conversation.orders.cart.size}")
                 }
             } finally {
                 if (inputJob === coroutineContext[Job]) {

@@ -118,6 +118,8 @@ void collect(const char* text, GenieDialog_SentenceCode_t code, const void* data
 
 } // namespace
 
+// JNI escapes each underscore in the package name as _1. GenieNative is a Kotlin object,
+// so the second native argument is its instance.
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_example_cafe_1kiosk_1ai_llm_GenieNative_open(
     JNIEnv* env, jobject, jbyteArray config, jbyteArray dspDir, jobject onLibraryLoaded) {

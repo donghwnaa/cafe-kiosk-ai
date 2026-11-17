@@ -15,13 +15,6 @@ import androidx.activity.ComponentActivity
 import androidx.core.content.ContextCompat
 import com.example.cafe_kiosk_ai.llm.GenieLlmEngine
 
-// Genie 비활성화/테스트 환경에서 에러가 나지 않도록 안전한 Fake NLU 엔진 정의 추가
-internal class FakeNluEngine : NluEngine {
-    override suspend fun analyze(text: String, context: NluContext): NluResult {
-        return NluResult(intent = NluIntent.UNKNOWN, ambiguous = "개발/테스트 모드입니다.")
-    }
-}
-
 internal fun createDevelopmentNlu(): NluEngine = FakeNluEngine()
 
 internal class TestTextInput {

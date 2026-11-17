@@ -6,6 +6,9 @@ Qualcomm의 텍스트 입력, 주문 화면 버튼과 DEBUG 텍스트 입력은
 `MainActivity.submitOrder → KioskSessionViewModel → LlmNluEngine → GenieLlmEngine`으로 들어간다.
 Genie 응답을 검증한 뒤 기존 `ConversationManager → OrderManager`가 초안, 확인, 장바구니 반영을 처리한다.
 Genie를 사용하는 기기에서 초기화·추론 오류는 대화에 표시된다.
+`GenieNative.open`은 JVM 디스크립터 `([B[BLjava/lang/Runnable;)J`인 인스턴스 메서드다.
+`libmallo_genie.so`가 `Java_com_example_cafe_1kiosk_1ai_llm_GenieNative_open`을 내보낸다.
+JVM이 이름으로 심볼을 찾으며, JNI 이름에서 패키지의 밑줄 하나는 `_1`로 인코딩된다.
 
 ## 에뮬레이터
 
@@ -27,14 +30,15 @@ manifest는 `Llama_MALLO_v9_Merged`를 원본으로, `team6/full_calibration/qua
 `w8a16`을 캘리브레이션 정밀도로 기록한다. 학습 데이터의 SHA-256도 기록되어 있다.
 원본 학습 데이터와 체크포인트 파일을 확보하면 이 기록까지 독립 검증할 수 있다.
 
-- 기본 보드용 APK의 `assets/llm/`에 모델을 무압축으로 넣는다. 앱에서 모델을 초기화할 때
+- 모델 내장 APK의 `assets/llm/`에 모델을 무압축으로 넣는다. 앱에서 모델을 초기화할 때
   `npu_manifest.json`의 크기와 SHA-256을 설치된 모델에 대조한다. 불일치하면 `no_backup/llm/`에
   임시 파일을 쓰고 크기와 해시를 검사한 뒤 이름을 바꾼다. 모델을 교체할 때 export manifest도 함께 갱신한다.
 - Genie에 넘기는 JSON에서 tokenizer, `ctx-bins`, backend `extensions`를 앱 내부 절대 경로로 바꾼다.
   HTP 설정과 모델 컨텍스트의 그래프 구성은 원본을 따른다.
-- SDK를 지정한 빌드에서는 ARM64 Genie·QNN 호스트 라이브러리 여섯 개를
-  `app/build/generated/genie/jniLibs/arm64-v8a/`에서 APK의 `lib/arm64-v8a/`로 패키징한다.
-  JNI를 로드한 다음 DSP 검색 경로를 설정하고 `libGenie.so`를 로드한다.
+- 보드용 빌드에서 CMake가 `libmallo_genie.so`를 ARM64로 빌드한다.
+  브리지와 `app/src/main/jniLibs/arm64-v8a/`의 ARM64 Genie·QNN 호스트 라이브러리 여섯 개가
+  APK의 `lib/arm64-v8a/`에 들어간다. 앱은 `System.loadLibrary("mallo_genie")`로 브리지를 로드한다.
+  브리지는 DSP 검색 경로를 설정한 후 `dlopen("libGenie.so")`로 Qualcomm 런타임을 로드한다.
 - `libQnnHtpV68Skel.so`는 Hexagon ELF다. `assets/llm/`에서
   `no_backup/llm/dsp/`로 복사하며 DSP가 `ADSP_LIBRARY_PATH`를 통해 찾는다.
   FastRPC의 `libcdsprpc.so`는 보드 펌웨어에서 제공해야 한다.
@@ -56,10 +60,10 @@ manifest는 `Llama_MALLO_v9_Merged`를 원본으로, `team6/full_calibration/qua
 돌아가며, 수정 후 새 확인을 받아야 한다. Genie가 확인 또는 결제로 분류해도 사용자의 명시적 확인 또는
 결제 발화가 필요하다. 여러 요청을 합쳐 동일 메뉴·옵션 한 줄이 99잔을 넘으면 전체 변경을 거부한다.
 
-SDK와 보드 없이 파일 무결성과 주문 로직을 확인할 수 있다.
+SDK와 보드 없이 주문 로직을 확인할 수 있다. 모델 파일을 보유하고 있으면 `:app:verifyGenieModel`도 실행할 수 있다.
 
 ```powershell
-.\gradlew.bat --offline :app:verifyGenieModel :app:testDebugUnitTest :app:assembleDebug
+.\gradlew.bat --offline :app:testDebugUnitTest :app:assembleDebug
 ```
 
 Genie 주문 단위 테스트는 한국어 입력과 미리 작성한 Function Call JSON을 사용한다.
@@ -71,20 +75,23 @@ Genie 주문 단위 테스트는 한국어 입력과 미리 작성한 Function C
    `include/Genie/GenieDialog.h`다. `GenieCommon.h`, `GenieEngine.h`, `GenieLog.h`,
    `GenieProfile.h`, `GenieSampler.h` 등 그 버전의 모든 종속 헤더가 필요하다.
    모델과 ARM64 런타임은 제공된 파일을 그대로 사용한다.
-3. PowerShell에서 보드용 패키징을 활성화하고 SDK 경로를 넘긴다.
+3. 모델 내장 APK를 만들려면 export의 `llama32_hf_v68.bin`을
+   `app/src/main/assets/llm/`에 둔 뒤 PowerShell에서 다음 명령을 실행한다.
 
    ```powershell
-   .\gradlew.bat -PmalloGenie=true "-PmalloQairtSdk=C:/path/to/qairt/2.40.0.251030" :app:assembleDebug :app:testDebugUnitTest
+   .\gradlew.bat -PmalloGenie=true -PmalloEmbedGenieModel=true "-PmalloQairtSdk=C:/path/to/qairt/2.40.0.251030" :app:assembleDebug :app:testDebugUnitTest
    ```
 
-   보드용과 에뮬레이터용 DEBUG APK의 출력 경로는 같다.
-   사용하려는 기기에 맞는 옵션으로 빌드한 직후 설치한다.
-   현재 개발 PC에서 공식 배포본의 Genie 헤더만 따로 받은 경로는
-   `.gradle/qairt-2.40.0.251030/include/Genie/`다. SDK 루트 인자는 해당 경로의 두 단계 상위 폴더를 지정한다.
+   보드용과 에뮬레이터용 DEBUG APK의 기본 출력 경로는 같다.
+   다른 구성으로 빌드하기 전에 기존 `app-debug.apk`를 다른 경로로 이동해 보관한다.
+   모델 분리형으로 전환할 때 기존 APK가 남아 있으면 증분 패키징이 내장 모델이 차지했던 공간을 남길 수 있다.
+   Android Studio에서 직접 실행할 때는 사용자 Gradle 속성에 `malloGenie=true`,
+   `malloEmbedGenieModel=true`, `malloQairtSdk=C:/path/to/qairt/2.40.0.251030`을 설정한다.
+   Windows SDK 경로는 슬래시로 구분한다.
 
 ### 모델 분리형 APK
 
-APK 설치 공간이 부족하면 빌드 명령에 `-PmalloEmbedGenieModel=false`를 추가한다.
+모델을 별도로 배포하려면 빌드 명령의 `-PmalloEmbedGenieModel=true`를 `-PmalloEmbedGenieModel=false`로 바꾼다.
 토크나이저, Genie 설정, 호스트 라이브러리와 DSP skel은 앱에 포함되며
 `llama32_hf_v68.bin`을 아래처럼 따로 전송한다. 기기에 앱을 설치해 한 번 시작한 뒤 진행한다.
 다른 저장소 볼륨을 쓰는 보드에서는 앱의 외부 파일 디렉터리를 기준으로 경로를 조정한다.
@@ -186,6 +193,5 @@ CLI는 셸에서 실행되므로, 앱 패키징과 FastRPC 네임스페이스는
 
 ## Git
 
-`app/src/main/assets/llm/`를 ignore에 추가했다. 작업 시작 시 모델 및 런타임 18개가 이미
-스테이징되어 있었으므로 `git diff --cached --name-only -- app/src/main/assets/llm`으로
-커밋에 포함된 경로를 확인한다. `llama32_hf_v68.bin`은 약 1.53 GB다.
+`llama32_hf_v68.bin`은 약 1.53 GB이며 Git에서 제외된다. 보드용 모델 내장 APK를 새로 빌드하거나
+모델 분리형 APK를 설치할 때 export의 모델 파일을 별도로 준비한다.

@@ -33,10 +33,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var screenContainer: FrameLayout
     private lateinit var session: KioskSessionViewModel
 
-    // Genie 미사용 상태에 맞춘 안전한 음성 컨트롤러 인터페이스 및 프로퍼티 정의
-    private var voice: Any? = null
-    private val voiceEngineName: String get() = "SenseVoice (Android)"
-
+    private var voice: VoiceController? = null
     private var tts: AndroidTtsEngine? = null
     private var genieTextInput: GenieTextInput? = null
     private var returningFromVoiceSettings = false
@@ -156,7 +153,7 @@ class MainActivity : AppCompatActivity() {
                 transcript?.render(
                     messages, conversation.pending,
                     savedChatOffset.takeIf { savedChatMessageCount == messages.size },
-                    actionMessageIndex = messages.lastIndex + if (session.hasTrailingTranscriptNotice) 1 else 0
+                    actionMessageIndex = messages.lastIndex - if (session.hasTrailingTranscriptNotice) 1 else 0
                 )
                 renderGenieInput()
                 savedChatOffset = null
@@ -315,16 +312,10 @@ class MainActivity : AppCompatActivity() {
         val turn = voiceTurn.start()
         trace(turn, "STT_PREPARING")
 
-        // Genie 비활성화 환경에 맞춰 음성 인식 컨트롤러 초기화 및 시뮬레이션 분기 처리
-        val controller = voice ?: AndroidSpeechRecognizerController(this) { tId, event ->
-            onVoiceEvent(tId, event)
-        }.also { voice = it }
-
+        val controller = voice ?: createVoiceController(this, displayedSessionId, onEvent = ::onVoiceEvent).also { voice = it }
         watchVoicePreparation(turn, VoiceTurn.Phase.QUEUED)
         trace(turn, "STT_START_REQUESTED")
-
-        // 타입 에러 없이 안전하게 인식 시작 호출
-        (controller as? AndroidSpeechRecognizerController)?.startListening(turn)
+        controller.startListening(turn)
     }
 
     private fun watchVoicePreparation(turn: Long, phase: VoiceTurn.Phase) {
@@ -400,25 +391,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun submitOrder(text: String): Boolean {
-        if (text.isBlank()) return false
-
-        if (session.usesGenieTextInput) {
-            if (session.genie == null) {
-                Toast.makeText(this, "거부됨: session.genie가 null입니다 (모델 미초기화)", Toast.LENGTH_SHORT).show()
-                return false
-            }
-            val success = session.submit(text)
-            if (success) {
-                renderGenieInput()
-            } else {
-                Toast.makeText(this, "거부됨: session.submit 실패 (엔진 처리 중 또는 미준비)", Toast.LENGTH_SHORT).show()
-            }
-            return success
-        }
-
-        if (demoOpen || !isCurrentScreen(Page.CONVERSATION) || session.isProcessingInput ||
+        if (demoOpen || text.isBlank() || !isCurrentScreen(Page.CONVERSATION) || session.isProcessingInput ||
             activeSpeech != null || session.hasSpokenResponses
         ) return false
+
+        if (session.usesGenieTextInput) {
+            if (session.genie == null) return false
+            return session.submit(text).also { if (it) renderGenieInput() }
+        }
 
         cancelVoiceTurn()
         consecutiveVoiceErrors = 0
@@ -445,8 +425,7 @@ class MainActivity : AppCompatActivity() {
         voiceRestart?.cancel()
         voiceRestart = null
 
-        // 안전하게 캐스팅하여 리스닝 중지
-        (voice as? AndroidSpeechRecognizerController)?.stopListening()
+        voice?.stopListening()
         turn?.let { trace(it, "STT_STOPPED") }
     }
 
@@ -455,7 +434,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun releaseVoice() {
         cancelVoiceTurn()
-        (voice as? AndroidSpeechRecognizerController)?.release()
+        voice?.release()
         voice = null
     }
 
