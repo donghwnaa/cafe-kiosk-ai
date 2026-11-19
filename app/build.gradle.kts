@@ -72,6 +72,8 @@ android {
         viewBinding = true
         buildConfig = true
     }
+    // The board-provisioned Genie bundle supplies this model at runtime.
+    androidResources.ignoreAssetsPatterns.add("llama32_hf_v68.bin")
     sourceSets.getByName("main") {
         java.srcDir(if (useSenseVoice) "src/sensevoice/java" else "src/platformStt/java")
         if (useOfflineTts) java.srcDir("src/offlineTts/java")

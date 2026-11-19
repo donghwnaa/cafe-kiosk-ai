@@ -45,9 +45,6 @@ internal class SherpaOfflineSttController(
     private var currentTurn: Turn? = null
     private var released = false
 
-    // Models and native streams belong to the worker. They are reused during one conversation.
-    private var vad: Vad? = null
-    private var recognizer: OfflineRecognizer? = null
     private var captureProfiles = emptyList<CaptureProfile>()
     private var captureProfileIndex = 0
     private var deadObjectRetryProfile: CaptureProfile? = null
@@ -70,29 +67,33 @@ internal class SherpaOfflineSttController(
         if (released) return
         released = true
         stopListening()
-        microphoneWorker.execute {
-            vad?.release()
-            vad = null
-            recognizer?.release()
-            recognizer = null
-        }
     }
 
     private fun recognize(turn: Turn) {
         if (turn.cancelled) return
-        post(turn, VoiceRecognitionEvent.PreparationStarted)
         val result = try {
-            val detector = vad ?: createVad().also { vad = it; trace(turn, "PREPARING", "VAD_INITIALIZED") }
-            val decoder = recognizer ?: createRecognizer().also { recognizer = it; trace(turn, "PREPARING", "STT_MODEL_INITIALIZED") }
-            if (turn.cancelled) return
-            detector.reset()
-            val samples = capture(turn, detector) ?: return
-            if (turn.cancelled) return
-            if (samples.isEmpty()) {
-                VoiceRecognitionEvent.Error(VoiceRecognitionError.NO_SPEECH)
-            } else {
-                post(turn, VoiceRecognitionEvent.Processing)
-                decode(decoder, samples)
+            val lease = ModelMemoryLease.acquire(appContext.cacheDir, "STT") { turn.cancelled } ?: return
+            lease.use {
+                post(turn, VoiceRecognitionEvent.PreparationStarted)
+                val detector = createVad()
+                val samples = try {
+                    capture(turn, detector)
+                } finally {
+                    detector.release()
+                } ?: return
+                if (turn.cancelled) return
+                if (samples.isEmpty()) {
+                    VoiceRecognitionEvent.Error(VoiceRecognitionError.NO_SPEECH)
+                } else {
+                    post(turn, VoiceRecognitionEvent.Processing)
+                    val decoder = createRecognizer()
+                    try {
+                        if (turn.cancelled) return
+                        decode(decoder, samples)
+                    } finally {
+                        decoder.release()
+                    }
+                }
             }
         } catch (error: SecurityException) {
             Log.w(TAG, "Microphone permission denied", error)

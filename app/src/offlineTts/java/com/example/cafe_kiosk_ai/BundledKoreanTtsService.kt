@@ -18,9 +18,9 @@ import kotlin.math.roundToInt
 /** Android owns the playback queue. The model is loaded lazily on its synthesis thread. */
 class BundledKoreanTtsService : TextToSpeechService() {
     private val cancellation = AtomicLong()
-    private val model by lazy {
+    private fun createModel(): OfflineTts {
         val started = SystemClock.elapsedRealtime()
-        OfflineTts(
+        return OfflineTts(
             assetManager = assets,
             config = OfflineTtsConfig(
                 model = OfflineTtsModelConfig(
@@ -62,41 +62,48 @@ class BundledKoreanTtsService : TextToSpeechService() {
         }
         val started = SystemClock.elapsedRealtime()
         try {
-            val synthesizer = model
-            if (token != cancellation.get()) return
-            val rate = synthesizer.sampleRate()
-            if (callback.start(rate, AudioFormat.ENCODING_PCM_16BIT, 1) != TextToSpeech.SUCCESS) return
-            val buffer = ByteArray(callback.maxBufferSize)
-            var total = 0
-            var failed = false
-            val config = GenerationConfig(speed = (request.speechRate / 100f).coerceIn(0.5f, 2f),
-                numSteps = 8, extra = mapOf("lang" to "ko"))
-            fun send(samples: FloatArray): Int {
-                var offset = 0
-                while (offset < samples.size && token == cancellation.get()) {
-                    val count = minOf(samples.size - offset, buffer.size / 2)
-                    for (i in 0 until count) {
-                        val sample = (samples[offset + i].coerceIn(-1f, 1f) * 32767).roundToInt()
-                        buffer[i * 2] = sample.toByte()
-                        buffer[i * 2 + 1] = (sample shr 8).toByte()
+            val lease = ModelMemoryLease.acquire(cacheDir, "TTS") { token != cancellation.get() } ?: return
+            lease.use {
+                val synthesizer = createModel()
+                try {
+                    if (token != cancellation.get()) return
+                    val rate = synthesizer.sampleRate()
+                    if (callback.start(rate, AudioFormat.ENCODING_PCM_16BIT, 1) != TextToSpeech.SUCCESS) return
+                    val buffer = ByteArray(callback.maxBufferSize)
+                    var total = 0
+                    var failed = false
+                    val config = GenerationConfig(speed = (request.speechRate / 100f).coerceIn(0.5f, 2f),
+                        numSteps = 8, extra = mapOf("lang" to "ko"))
+                    fun send(samples: FloatArray): Int {
+                        var offset = 0
+                        while (offset < samples.size && token == cancellation.get()) {
+                            val count = minOf(samples.size - offset, buffer.size / 2)
+                            for (i in 0 until count) {
+                                val sample = (samples[offset + i].coerceIn(-1f, 1f) * 32767).roundToInt()
+                                buffer[i * 2] = sample.toByte()
+                                buffer[i * 2 + 1] = (sample shr 8).toByte()
+                            }
+                            if (callback.audioAvailable(buffer, 0, count * 2) != TextToSpeech.SUCCESS) {
+                                failed = true
+                                return 0
+                            }
+                            offset += count
+                            total += count
+                        }
+                        return if (token == cancellation.get()) 1 else 0
                     }
-                    if (callback.audioAvailable(buffer, 0, count * 2) != TextToSpeech.SUCCESS) {
-                        failed = true
-                        return 0
+                    val generated = synthesizer.generateWithConfigAndCallback(request.charSequenceText.toString(), config, ::send)
+                    if (!failed && total == 0 && token == cancellation.get()) send(generated.samples)
+                    if (token != cancellation.get()) return
+                    if (failed || total == 0) {
+                        callback.error(TextToSpeech.ERROR_SYNTHESIS)
+                        return
                     }
-                    offset += count
-                    total += count
+                    Log.i(TAG, "OFFLINE_TTS_SYNTHESIZED lang=ko sampleRate=$rate samples=$total elapsedMs=${SystemClock.elapsedRealtime() - started}")
+                } finally {
+                    synthesizer.release()
                 }
-                return if (token == cancellation.get()) 1 else 0
             }
-            val generated = synthesizer.generateWithConfigAndCallback(request.charSequenceText.toString(), config, ::send)
-            if (!failed && total == 0 && token == cancellation.get()) send(generated.samples)
-            if (token != cancellation.get()) return
-            if (failed || total == 0) {
-                callback.error(TextToSpeech.ERROR_SYNTHESIS)
-                return
-            }
-            Log.i(TAG, "OFFLINE_TTS_SYNTHESIZED lang=ko sampleRate=$rate samples=$total elapsedMs=${SystemClock.elapsedRealtime() - started}")
             callback.done()
         } catch (error: RuntimeException) {
             synthesisError(token, callback, error)

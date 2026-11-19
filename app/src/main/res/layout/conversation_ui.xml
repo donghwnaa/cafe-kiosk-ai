@@ -149,6 +149,40 @@
             android:text="@string/voice_retry"
             android:textSize="16sp"
             android:visibility="gone" />
+        <Button
+            android:id="@+id/type_order"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/type_order" />
+    </LinearLayout>
+    <LinearLayout
+        android:id="@+id/text_footer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="8dp"
+        android:layout_marginTop="8dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:visibility="gone">
+        <EditText
+            android:id="@+id/order_text"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="@string/order_text_hint"
+            android:imeOptions="actionSend"
+            android:inputType="text"
+            android:maxLines="1" />
+        <Button
+            android:id="@+id/send_text_order"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/send_order" />
+        <Button
+            android:id="@+id/resume_voice"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/resume_voice" />
     </LinearLayout>
     </LinearLayout>
 </FrameLayout>

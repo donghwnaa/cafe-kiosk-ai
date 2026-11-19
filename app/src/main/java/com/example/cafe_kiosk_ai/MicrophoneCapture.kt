@@ -59,7 +59,7 @@ internal fun microphoneProfiles(context: Context): List<CaptureProfile> {
 }
 
 internal fun usbCaptureProfiles(device: AudioDeviceInfo): List<CaptureProfile> {
-    val pcmRates = listOf(16_000, 48_000, 44_100)
+    val pcmRates = listOf(48_000, 16_000, 44_100)
     val advertised = pcmRates.filter { it in device.sampleRates }
     val selected = (advertised.ifEmpty { pcmRates }).take(2)
     return selected.flatMap { rate ->

@@ -4,6 +4,9 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.View
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -33,7 +36,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var screenContainer: FrameLayout
     private lateinit var session: KioskSessionViewModel
     private var voice: VoiceController? = null
-    private lateinit var tts: AndroidTtsEngine
+    private var tts: AndroidTtsEngine? = null
     private var returningFromVoiceSettings = false
     private val testTextInput = TestTextInput()
     private var page: Page? = null
@@ -43,6 +46,7 @@ class MainActivity : AppCompatActivity() {
     private var foreground = false
     private var permissionRequested = false
     private var permissionRequestInFlight = false
+    private var textMode = false
     private val voiceTurn = VoiceTurn()
     private var voicePreparation: Job? = null
     private var voiceState = VoiceState.STOPPED
@@ -64,7 +68,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         screenContainer = findViewById(R.id.screen_container)
         session = ViewModelProvider(this)[KioskSessionViewModel::class.java]
-        tts = AndroidTtsEngine(this)
+        textMode = savedInstanceState?.getBoolean("textMode") == true
         savedChatOffset = savedInstanceState?.getInt("chatOffset", -1)?.takeIf { it >= 0 }
         permissionRequested = savedInstanceState?.getBoolean("voicePermissionRequested") == true
         permissionRequestInFlight = savedInstanceState?.getBoolean("voicePermissionPending") == true
@@ -91,6 +95,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean("textMode", textMode)
         outState.putInt("chatOffset", transcript?.takeUnless { it.isNearLatest() }?.offset ?: savedChatOffset ?: -1)
         outState.putBoolean("voicePermissionRequested", page == Page.CONVERSATION && permissionRequested)
         outState.putBoolean("voicePermissionPending", permissionRequestInFlight)
@@ -101,13 +106,13 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         if (returningFromVoiceSettings) {
             returningFromVoiceSettings = false
-            tts.reload()
+            tts?.reload()
             lastTtsError = null
         } else {
-            tts.refreshIfUnavailable()
+            tts?.refreshIfUnavailable()
         }
         foreground = true
-        session.captureSpokenResponses(true)
+        session.captureSpokenResponses(!textMode)
         render()
     }
 
@@ -120,8 +125,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         testTextInput.detach()
-        releaseVoice()
-        tts.release()
+        stopAudio()
         super.onDestroy()
     }
 
@@ -139,6 +143,7 @@ class MainActivity : AppCompatActivity() {
             Page.START -> Unit
             Page.CONVERSATION -> {
                 transcript?.render(conversation.messages, conversation.pending, savedChatOffset)
+                screenContainer.findViewById<View>(R.id.send_text_order).isEnabled = !session.isProcessingInput
                 savedChatOffset = null
             }
             Page.PAYMENT -> renderPayment(screenContainer.getChildAt(0))
@@ -153,6 +158,10 @@ class MainActivity : AppCompatActivity() {
             transcript?.takeUnless { it.isNearLatest() }?.offset ?: savedChatOffset
         transcript = null
         testTextInput.detach()
+        if (destination == Page.START) {
+            textMode = false
+            session.captureSpokenResponses(foreground)
+        }
         page = destination
         displayedSessionId = session.conversation.currentSessionId
         listOf(R.id.nav_start, R.id.nav_conversation, R.id.nav_payment).forEachIndexed { index, id ->
@@ -171,11 +180,55 @@ class MainActivity : AppCompatActivity() {
         screenContainer.removeAllViews()
         screenContainer.addView(screen)
         when (destination) {
-            Page.START -> screen.findViewById<View>(R.id.btn_start_order).setOnClickListener { session.startSession() }
+            Page.START -> {
+                screen.findViewById<View>(R.id.btn_start_order).setOnClickListener { session.startSession() }
+                screen.findViewById<View>(R.id.btn_start_text_order).setOnClickListener {
+                    textMode = true
+                    session.captureSpokenResponses(false)
+                    session.startSession()
+                }
+            }
             Page.CONVERSATION -> {
                 screen.findViewById<View>(R.id.home_icon).setOnClickListener { session.goHome() }
                 transcript = ChatTranscript(screen, ::submitOrder)
-                testTextInput.attach(this, ::submitOrder)
+                fun selectInput(keyboard: Boolean) {
+                    textMode = keyboard
+                    screen.findViewById<View>(R.id.voice_footer).isVisible = !keyboard
+                    screen.findViewById<View>(R.id.text_footer).isVisible = keyboard
+                    session.captureSpokenResponses(foreground && !keyboard)
+                    if (keyboard) {
+                        stopAudio()
+                    } else {
+                        syncAudio()
+                    }
+                }
+                screen.findViewById<View>(R.id.type_order).setOnClickListener { selectInput(true) }
+                val editor = screen.findViewById<EditText>(R.id.order_text)
+                fun hideKeyboard() {
+                    getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(editor.windowToken, 0)
+                }
+                fun sendText() {
+                    if (submitOrder(editor.text.toString().trim())) {
+                        editor.text.clear()
+                        hideKeyboard()
+                    }
+                }
+                screen.findViewById<View>(R.id.send_text_order).setOnClickListener { sendText() }
+                screen.findViewById<View>(R.id.resume_voice).setOnClickListener {
+                    hideKeyboard()
+                    selectInput(false)
+                }
+                editor.setOnEditorActionListener { _, action, _ ->
+                    if (action != EditorInfo.IME_ACTION_SEND) return@setOnEditorActionListener false
+                    sendText()
+                    true
+                }
+                screen.findViewById<View>(R.id.voice_footer).isVisible = !textMode
+                screen.findViewById<View>(R.id.text_footer).isVisible = textMode
+                testTextInput.attach(this) { text ->
+                    if (!textMode) selectInput(true)
+                    submitOrder(text)
+                }
                 screen.findViewById<View>(R.id.voice_retry).setOnClickListener {
                     consecutiveVoiceErrors = 0
                     permissionRequested = false
@@ -198,6 +251,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun syncAudio() {
+        if (textMode) return
         val inConversation = isCurrentScreen(Page.CONVERSATION)
         if (!inConversation && !isCurrentScreen(Page.PAYMENT)) return
         if (activeSpeech != null) return
@@ -218,8 +272,9 @@ class MainActivity : AppCompatActivity() {
         cancelVoiceTurn()
         val speech = ++speechSequence
         activeSpeech = speech
-        showVoiceState(if (tts.isInitializing) VoiceState.INITIALIZING_TTS else VoiceState.SPEAKING)
-        tts.speak(text) { event ->
+        val engine = tts ?: AndroidTtsEngine(this).also { tts = it }
+        showVoiceState(if (engine.isInitializing) VoiceState.INITIALIZING_TTS else VoiceState.SPEAKING)
+        engine.speak(text) { event ->
             if (activeSpeech == speech && isCurrentScreen(destination)) {
                 when (event) {
                     TtsPlaybackEvent.Started -> {
@@ -261,7 +316,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun finishSpeech() {
-        activeSpeech = null
+        releaseSpeech()
         if (page != Page.CONVERSATION) showVoiceState(VoiceState.STOPPED)
         syncAudio()
     }
@@ -402,10 +457,16 @@ class MainActivity : AppCompatActivity() {
         voice = null
     }
 
+    private fun releaseSpeech() {
+        activeSpeech = null
+        val engine = tts
+        tts = null
+        engine?.release()
+    }
+
     private fun stopAudio() {
         releaseVoice()
-        activeSpeech = null
-        tts.stop()
+        releaseSpeech()
         consecutiveVoiceErrors = 0
         showVoiceState(VoiceState.STOPPED)
     }

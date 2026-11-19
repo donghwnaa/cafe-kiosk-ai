@@ -81,10 +81,11 @@ internal class AndroidTtsEngine(
         val installed = appContext.packageManager.queryIntentServices(serviceIntent, 0)
             .map { it.serviceInfo.packageName }.toSet()
         engineCandidates = buildList {
+            if (appContext.packageName in installed) add(appContext.packageName)
             if (GOOGLE_TTS in installed) add(GOOGLE_TTS)
             add(null) // System default, including manufacturer engines.
             if (OFFLINE_KOREAN_TTS in installed) add(OFFLINE_KOREAN_TTS)
-            if (appContext.packageName in installed) add(appContext.packageName)
+
         }
         Log.i(TAG, "TTS_ENGINES installed=$installed candidates=$engineCandidates")
         candidateIndex = 0

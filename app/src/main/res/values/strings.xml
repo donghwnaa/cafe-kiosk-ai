@@ -12,7 +12,7 @@
     <string name="voice_mic_no_data">마이크에서 오디오를 받지 못했습니다. USB 사운드카드와 마이크 케이블 연결을 확인해 주세요.</string>
     <string name="voice_mic_zero_signal">입력 신호가 감지되지 않았습니다. 마이크에 가까이 말하거나 연결을 확인한 뒤 다시 시도해 주세요.</string>
     <string name="voice_mic_cleanup_timeout">이전 녹음 작업의 종료가 지연되고 있습니다. 잠시 뒤 다시 시도해 주세요.</string>
-    <string name="voice_usb_awaiting_speech">USB 마이크 입력을 확인 중입니다. 마이크에 가까이 말씀해 주세요.</string>
+    <string name="voice_usb_awaiting_speech">지금 USB 마이크에 주문을 말씀해 주세요.</string>
     <string name="voice_preparation_failed">음성 입력을 준비하지 못했습니다. 마이크 연결을 확인한 뒤 다시 시도해 주세요.</string>
     <string name="tts_install_korean_prompt">사용할 수 있는 오프라인 한국어 안내 음성이 없습니다. Google 음성 설정에서 한국어 음성 데이터를 설치해 주세요.</string>
     <string name="tts_install_korean">한국어 음성 설치</string>
@@ -21,4 +21,8 @@
     <string name="voice_unavailable">이 기기에서 한국어 음성 인식을 사용할 수 없습니다.</string>
     <string name="voice_stopped">음성 인식이 중지되었습니다.</string>
     <string name="voice_retry">다시 시도</string>
+    <string name="type_order">글자로 주문</string>
+    <string name="order_text_hint">주문 내용 입력</string>
+    <string name="send_order">보내기</string>
+    <string name="resume_voice">음성으로</string>
 </resources>

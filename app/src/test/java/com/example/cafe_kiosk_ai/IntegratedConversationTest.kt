@@ -8,6 +8,24 @@ class IntegratedConversationTest {
     private fun ConversationManager.send(text: String) = runBlocking { handleUserInput(text) }
     private fun ConversationManager.latestCard() = messages.last().card
 
+    @Test fun affirmativeItemConfirmationSkipsInference() = runBlocking {
+        val c = ConversationManager()
+        c.startNewSession()
+        c.send("아아 두 잔 보통으로 주세요")
+        val context = requireNotNull(c.contextSnapshot())
+        val question = requireNotNull(context.question)
+        var calls = 0
+        val engine = LlmNluEngine(LlmEngine { _, _ ->
+            calls++
+            """{"function":"show_cart","parameters":{}}"""
+        })
+        assertEquals(NluIntent.CONFIRM, engine.analyze("네, 맞아요.", context).intent)
+        assertEquals(0, calls)
+        engine.analyze("네, 그런데 두 잔으로 바꿔 주세요", context)
+        engine.analyze("네", context.copy(question = question.copy(paused = true)))
+        engine.analyze("네", context.copy(question = null))
+        assertEquals(3, calls)
+    }
     @Test fun additionalOrdersRetainCartAndAppendSnapshotsToOneHistory() {
         val c = ConversationManager()
         c.startNewSession()
@@ -185,5 +203,25 @@ class IntegratedConversationTest {
         c.send("맞아요")
         assertEquals(2, c.orders.cart.single().quantity)
         assertEquals(before.single().id, c.orders.cart.single().id)
+    }
+
+    @Test fun deployedMalloItemsReachTheCartOnlyAfterConfirmation() {
+        val c = ConversationManager(LlmNluEngine(LlmEngine { text, _ ->
+            when (text) {
+                "네" -> """{"function":"dialogue_response","parameters":{"value":"YES"}}"""
+                "오류" -> """{"function":"add_menu","parameters":{"items":[{"quantity":2}]}}"""
+                else -> """{"function":"add_menu","parameters":{"items":[{"menu_name":"아메리카노","quantity":1,"temperature":"ICE","size":"REGULAR"},{"menu_name":"카페라떼","quantity":2,"temperature":"HOT","size":"TALL"}]}}"""
+            }
+        }))
+        c.startNewSession()
+        c.send("오류")
+        assertTrue(c.orders.cart.isEmpty())
+        c.send("두 메뉴 주문")
+        assertTrue(c.orders.cart.isEmpty())
+        c.send("네")
+        assertEquals(listOf("아메리카노", "카페라떼"), c.orders.cart.map { it.menu.name })
+        assertEquals(listOf(1, 2), c.orders.cart.map { it.quantity })
+        assertEquals(listOf(Temperature.ICE, Temperature.HOT), c.orders.cart.map { it.temperature })
+        assertEquals(listOf(DrinkSize.REGULAR, DrinkSize.TALL), c.orders.cart.map { it.size })
     }
 }

@@ -6,15 +6,26 @@ import com.google.gson.Strictness
 import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
 
-fun interface FunctionCallAdapter { fun decode(json: String): NluResult }
+fun interface FunctionCallAdapter {
+    fun decode(json: String): NluResult
+    fun decode(json: String, context: NluContext?): NluResult = decode(json)
+}
 
-/** Swap the wire adapter when the deployed MALLO v9 function schema is available. */
+/** Maps a model function call to the existing order dialogue. */
 class LlmNluEngine(
     private val llm: LlmEngine,
     private val adapter: FunctionCallAdapter = NluJsonAdapter
 ) : NluEngine {
-    override suspend fun analyze(text: String, context: NluContext): NluResult =
-        adapter.decode(llm.functionCallJson(text, context))
+    private val affirmative = Regex("(?:네|예|응)(?:맞아요|맞습니다)?|맞아요|맞습니다")
+
+    override suspend fun analyze(text: String, context: NluContext): NluResult {
+        val question = context.question
+        if (question?.kind == PendingQuestion.ITEM_CONFIRMATION && !question.paused) {
+            val answer = text.filter { it.isLetterOrDigit() }
+            if (affirmative.matches(answer)) return NluResult(NluIntent.CONFIRM)
+        }
+        return adapter.decode(llm.functionCallJson(text, context), context)
+    }
 }
 
 object NluJsonAdapter : FunctionCallAdapter {
@@ -29,14 +40,91 @@ object NluJsonAdapter : FunctionCallAdapter {
         "request_clarification" to NluIntent.UNKNOWN
     )
 
-    override fun decode(json: String): NluResult = runCatching {
+    override fun decode(json: String): NluResult = decode(json, null)
+
+    override fun decode(json: String, context: NluContext?): NluResult = runCatching {
         require(json.length <= 16_384)
         val reader = JsonReader(json.reader()).apply { strictness = Strictness.STRICT }
         val root = JsonParser.parseReader(reader)
         require(reader.peek() == JsonToken.END_DOCUMENT)
-        decodeCall(root.asJsonObject, allowBatch = true)
+        val call = root.asJsonObject
+        if (call.has("parameters")) decodeV9(call, context, allowBatch = true)
+        else decodeCall(call, allowBatch = true)
     }.getOrElse { NluResult(NluIntent.UNKNOWN, ambiguous = "주문 내용을 확인하지 못했습니다. 다시 말씀해 주세요.") }
 
+    private fun decodeV9(call: JsonObject, context: NluContext?, allowBatch: Boolean): NluResult {
+        val parameters = call.getAsJsonObject("parameters")
+        val function = call.string("function")
+        val menu = parameters.string("menu_name")
+        when (function) {
+            "multi_action" -> {
+                require(allowBatch)
+                val actions = parameters.getAsJsonArray("actions")
+                require(actions.size() in 2..10)
+                val expanded = actions.flatMap {
+                    val action = decodeV9(it.asJsonObject, context, allowBatch = false)
+                    if (action.intent == NluIntent.MULTI_ACTION) action.actions else listOf(action)
+                }
+                require(expanded.size <= 10)
+                return NluResult(NluIntent.MULTI_ACTION, actions = expanded)
+            }
+            "add_menu" -> {
+                val items = parameters.getAsJsonArray("items")
+                require(items.size() in 1..10)
+                val orders = items.map {
+                    val item = it.asJsonObject
+                    require(!item.string("menu_name").isNullOrBlank())
+                    item.v9Options(NluIntent.ADD)
+                }
+                return orders.singleOrNull() ?: NluResult(NluIntent.MULTI_ACTION, actions = orders)
+            }
+            "dialogue_response" -> return NluResult(when (parameters.string("value")) {
+                "YES" -> NluIntent.CONFIRM
+                "NO" -> NluIntent.DENY
+                "KEEP_CURRENT" -> NluIntent.KEEP
+                else -> error("Unknown dialogue response")
+            })
+            "cancel_order" -> return NluResult(NluIntent.CANCEL)
+            "change_quantity" -> {
+                val delta = parameters.integer("delta")
+                if (delta == null) {
+                    require(parameters.integer("quantity") != null)
+                    return parameters.v9Options(NluIntent.CHANGE)
+                }
+                require(delta in -99..99 && delta != 0 && !parameters.has("quantity"))
+                val draft = context?.drafts?.filter { it.menu.name == menu }?.singleOrNull()
+                if (draft == null && delta < 0) return NluResult(NluIntent.REMOVE, menu, -delta)
+                val quantity = draft?.quantity ?: context?.cart?.singleOrNull { it.menu.name == menu }?.quantity
+                    ?: return NluResult(NluIntent.UNKNOWN, ambiguous = "어떤 메뉴의 수량을 바꿀까요?")
+                return NluResult(NluIntent.CHANGE, menu, quantity + delta)
+            }
+            "change_option" -> {
+                require(!parameters.has("split_items"))
+                return parameters.v9Options(NluIntent.CHANGE)
+            }
+            "remove_menu" -> return NluResult(NluIntent.REMOVE, menu = menu, removeAll = true)
+            "request_clarification" -> {
+                val options = parameters.v9Options(NluIntent.ADD)
+                val pendingDraft = context?.question?.kind in setOf(
+                    PendingQuestion.QUANTITY, PendingQuestion.TEMPERATURE, PendingQuestion.SIZE
+                )
+                if (pendingDraft && parameters.string("reason") == "MISSING_TARGET_MENU" &&
+                    (options.quantity != null || options.temperature != null || options.size != null)) return options
+                return NluResult(NluIntent.UNKNOWN, ambiguous = "메뉴 이름과 원하시는 옵션을 다시 말씀해 주세요.")
+            }
+            "confirm_order" -> return NluResult(NluIntent.PAY)
+            "show_cart" -> return NluResult(NluIntent.SHOW_CART)
+            "menu_query" -> return NluResult(NluIntent.SHOW_MENU)
+            "help_request" -> return NluResult(NluIntent.HELP)
+            else -> error("Invalid MALLO function")
+        }
+    }
+
+    private fun JsonObject.v9Options(intent: NluIntent) = NluResult(
+        intent = intent, menu = string("menu_name"), quantity = integer("quantity"),
+        temperature = string("temperature")?.let(Temperature::valueOf),
+        size = string("size")?.let(DrinkSize::valueOf)
+    )
     private fun decodeCall(call: JsonObject, allowBatch: Boolean): NluResult {
         val intent = when (val function = call.string("function")) {
             "dialogue_response" -> when (call.string("response")) {

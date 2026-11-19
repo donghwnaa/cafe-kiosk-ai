@@ -1,6 +1,7 @@
 package com.example.cafe_kiosk_ai
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -12,12 +13,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-internal class KioskSessionViewModel : ViewModel() {
+internal class KioskSessionViewModel(application: Application) : AndroidViewModel(application) {
     private data class SpokenResponse(val text: String, val forPayment: Boolean)
 
     private val spokenResponses = ArrayDeque<SpokenResponse>()
     private var captureSpokenResponses = false
-    val conversation = ConversationManager(responseOutput = AiResponseOutput(::enqueueResponse))
+    val conversation = ConversationManager(
+        nlu = LlmNluEngine(BoardGenieLlmEngine(application.cacheDir)),
+        responseOutput = AiResponseOutput(::enqueueResponse)
+    )
     private val sessionScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var inputJob: Job? = null
     val isProcessingInput: Boolean get() = inputJob != null

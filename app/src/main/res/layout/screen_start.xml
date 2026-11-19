@@ -44,7 +44,7 @@
     <LinearLayout
         android:id="@+id/btn_start_order"
         android:layout_width="match_parent"
-        android:layout_height="150dp"
+        android:layout_height="100dp"
         android:background="@drawable/bg_start_cta"
         android:clickable="true"
         android:focusable="true"
@@ -54,8 +54,8 @@
         android:paddingVertical="12dp">
 
         <ImageView
-            android:layout_width="100dp"
-            android:layout_height="100dp"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
             android:contentDescription="음성 주문"
             android:scaleType="fitCenter"
             android:src="@drawable/voice_order_icon" />
@@ -70,6 +70,13 @@
             android:textColor="#FFFFFF"
             android:textSize="23sp" />
     </LinearLayout>
+
+    <Button
+        android:id="@+id/btn_start_text_order"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="48dp"
+        android:text="@string/type_order" />
 
     <Space
         android:layout_width="match_parent"
