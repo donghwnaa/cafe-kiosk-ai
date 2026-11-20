@@ -9,7 +9,9 @@ import java.nio.channels.FileLock
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.Semaphore
 
-/** Held across the entire lifetime of a native model. */
+internal const val IDLE_MODEL_AVAILABLE_BYTES = 1024L * 1024 * 1024
+
+/** Serializes native model initialization and work across app processes. */
 internal class ModelMemoryLease private constructor(
     private val stage: String,
     private val handle: RandomAccessFile,

@@ -74,10 +74,13 @@ android {
     }
     // The board-provisioned Genie bundle supplies this model at runtime.
     androidResources.ignoreAssetsPatterns.add("llama32_hf_v68.bin")
+    androidResources.noCompress.add("wav")
     sourceSets.getByName("main") {
         java.srcDir(if (useSenseVoice) "src/sensevoice/java" else "src/platformStt/java")
         if (useOfflineTts) java.srcDir("src/offlineTts/java")
     }
+    if (useSenseVoice) sourceSets.getByName("androidTest").java.srcDir("src/sensevoiceAndroidTest/java")
+    if (useOfflineTts) sourceSets.getByName("androidTest").java.srcDir("src/offlineTtsAndroidTest/java")
 }
 
 if (prepareOfflineStt != null) {
@@ -137,10 +140,11 @@ abstract class PrepareOfflineStt @Inject constructor(
             "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6"
         )
         val model = "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17"
+        val modelArchiveHash = "7d1efa2138a65b0b488df37f8b89e3d91a60676e416f515b952358d83dfd347e"
         val modelArchive = releaseFile(
             "asr-models",
             "$model.tar.bz2",
-            "7d1efa2138a65b0b488df37f8b89e3d91a60676e416f515b952358d83dfd347e"
+            modelArchiveHash
         )
 
         val sttAssets = assets.dir("stt").get().asFile
@@ -158,6 +162,10 @@ abstract class PrepareOfflineStt @Inject constructor(
         for (name in listOf("model.int8.onnx", "tokens.txt", "silero_vad.onnx", "SenseVoice-LICENSE.txt")) {
             check(sttAssets.resolve(name).length() > 0) { "Missing STT asset after extraction: $name" }
         }
+        sttAssets.resolve("model-files.txt").writeText(
+            listOf(modelArchiveHash, sttAssets.resolve("model.int8.onnx").length(),
+                sttAssets.resolve("tokens.txt").length()).joinToString("\n")
+        )
         aarArchive.copyTo(aar.get().asFile, overwrite = true)
     }
 
@@ -201,6 +209,22 @@ abstract class PrepareOfflineTts @Inject constructor(
             into(destination)
         }
         (files + licenseName).forEach { check(destination.resolve(it).length() > 0) { "Missing TTS asset: $it" } }
+        destination.resolve("model-files.txt").writeText(
+            (listOf("supertonic-3-int8-82fa96f91c4ef8abaae3a14a3f4153facf88bed821d1f7331cec2700f432c427") +
+                files.filter { it != "LICENSE" }.map { name ->
+                    val file = destination.resolve(name)
+                    val hash = MessageDigest.getInstance("SHA-256")
+                    file.inputStream().use { stream ->
+                        val buffer = ByteArray(128 * 1024)
+                        var count = stream.read(buffer)
+                        while (count != -1) {
+                            hash.update(buffer, 0, count)
+                            count = stream.read(buffer)
+                        }
+                    }
+                    "$name ${file.length()} ${HexFormat.of().formatHex(hash.digest())}"
+                }).joinToString("\n")
+        )
     }
 }
 

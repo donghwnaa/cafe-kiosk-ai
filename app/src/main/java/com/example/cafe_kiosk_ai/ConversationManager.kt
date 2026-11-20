@@ -65,7 +65,7 @@ class ConversationManager(
     fun startNewSession(): ConversationUpdate {
         resetSession()
         sessionId = UUID.randomUUID().toString()
-        return say("무엇을 주문하시겠어요?", ChatCard.Menu)
+        return say(RecordedPrompt.WELCOME.text, ChatCard.Menu)
     }
 
     fun resetSession() {
@@ -283,7 +283,7 @@ class ConversationManager(
         clearDrafts()
         clearQuestion()
         state = DialogueState.WAITING_FOR_CART_CONFIRMATION
-        return say("장바구니에 반영했습니다. 현재 주문 내역을 확인해 주세요.", cartCard())
+        return say(RecordedPrompt.CART_UPDATED.text, cartCard())
     }
 
     private fun stageBatch(actions: List<NluResult>): ConversationUpdate {
@@ -438,7 +438,8 @@ class ConversationManager(
     fun showCart(): ConversationUpdate {
         if (stage == OrderStage.HOME || stage == OrderStage.PAYMENT) return ConversationUpdate(stage, "")
         if (question == null && drafts.isEmpty()) state = DialogueState.WAITING_FOR_CART_CONFIRMATION
-        return pauseFor(if (orders.cart.isEmpty()) "장바구니가 비어 있습니다." else "현재 장바구니를 확인해 주세요.", cartCard())
+        val prompt = if (orders.cart.isEmpty()) RecordedPrompt.CART_EMPTY else RecordedPrompt.CART_HAS_ITEMS
+        return pauseFor(prompt.text, cartCard())
     }
 
     private fun requestPayment(): ConversationUpdate {

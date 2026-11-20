@@ -7,11 +7,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import androidx.annotation.MainThread
-import com.k2fsa.sherpa.onnx.FeatureConfig
-import com.k2fsa.sherpa.onnx.OfflineModelConfig
 import com.k2fsa.sherpa.onnx.OfflineRecognizer
-import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
-import com.k2fsa.sherpa.onnx.OfflineSenseVoiceModelConfig
 import com.k2fsa.sherpa.onnx.SileroVadModelConfig
 import com.k2fsa.sherpa.onnx.Vad
 import com.k2fsa.sherpa.onnx.VadModelConfig
@@ -72,27 +68,27 @@ internal class SherpaOfflineSttController(
     private fun recognize(turn: Turn) {
         if (turn.cancelled) return
         val result = try {
-            val lease = ModelMemoryLease.acquire(appContext.cacheDir, "STT") { turn.cancelled } ?: return
-            lease.use {
-                post(turn, VoiceRecognitionEvent.PreparationStarted)
-                val detector = createVad()
-                val samples = try {
-                    capture(turn, detector)
-                } finally {
-                    detector.release()
-                } ?: return
-                if (turn.cancelled) return
-                if (samples.isEmpty()) {
-                    VoiceRecognitionEvent.Error(VoiceRecognitionError.NO_SPEECH)
-                } else {
-                    post(turn, VoiceRecognitionEvent.Processing)
-                    val decoder = createRecognizer()
-                    try {
-                        if (turn.cancelled) return
-                        decode(decoder, samples)
-                    } finally {
-                        decoder.release()
-                    }
+            post(turn, VoiceRecognitionEvent.PreparationStarted)
+            val detector = createVad()
+            val samples = try {
+                capture(turn, detector)
+            } finally {
+                detector.release()
+            } ?: return
+            if (turn.cancelled) return
+            if (samples.isEmpty()) {
+                VoiceRecognitionEvent.Error(VoiceRecognitionError.NO_SPEECH)
+            } else {
+                post(turn, VoiceRecognitionEvent.Processing)
+                // Capture can run during Genie preload. Serialize only the heavier ASR work.
+                val lease = ModelMemoryLease.acquire(appContext.cacheDir, "STT") { turn.cancelled } ?: return
+                lease.use {
+                    ResidentSenseVoiceRecognizer.use(appContext, config.useItn) { decoder, reused ->
+                        if (turn.cancelled) null else {
+                            Log.d(TAG, "SENSEVOICE_DECODE reused=$reused")
+                            decode(decoder, samples)
+                        }
+                    } ?: return
                 }
             }
         } catch (error: SecurityException) {
@@ -101,7 +97,7 @@ internal class SherpaOfflineSttController(
         } catch (error: LinkageError) {
             Log.e(TAG, "Could not load sherpa-onnx JNI", error)
             VoiceRecognitionEvent.Error(VoiceRecognitionError.UNAVAILABLE)
-        } catch (error: RuntimeException) {
+        } catch (error: Exception) {
             if (turn.cancelled) return
             Log.e(TAG, "Offline recognition failed", error)
             VoiceRecognitionEvent.Error(VoiceRecognitionError.SERVICE)
@@ -313,23 +309,6 @@ internal class SherpaOfflineSttController(
         )
     )
 
-    private fun createRecognizer() = OfflineRecognizer(
-        assetManager = assets,
-        config = OfflineRecognizerConfig(
-            featConfig = FeatureConfig(sampleRate = SAMPLE_RATE, featureDim = 80),
-            modelConfig = OfflineModelConfig(
-                senseVoice = OfflineSenseVoiceModelConfig(
-                    model = "stt/model.int8.onnx",
-                    language = "ko",
-                    useInverseTextNormalization = config.useItn
-                ),
-                tokens = "stt/tokens.txt",
-                numThreads = 2,
-                provider = "cpu"
-            )
-        )
-    )
-
     private fun trace(turn: Turn, state: String, event: String, detail: String = "") =
         audioLog(voiceEngineName, sessionId, turn.id, state, event, detail)
 
@@ -342,7 +321,7 @@ internal class SherpaOfflineSttController(
 
     private companion object {
         const val TAG = "MalloStt"
-        const val SAMPLE_RATE = 16_000
+        const val SAMPLE_RATE = SENSEVOICE_SAMPLE_RATE
         const val WINDOW_SIZE = 512
         const val IDLE_SECONDS = 30
         const val READ_POLL_MS = 10L

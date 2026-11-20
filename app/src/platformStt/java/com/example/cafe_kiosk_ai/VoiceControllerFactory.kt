@@ -10,3 +10,9 @@ internal fun createVoiceController(
 ): VoiceController = AndroidSpeechRecognizerController(context, onEvent)
 
 internal const val voiceEngineName = "AndroidSpeechRecognizer"
+
+internal suspend fun prepareVoiceRecognizerFiles(@Suppress("UNUSED_PARAMETER") context: Context) = Unit
+
+internal suspend fun preloadVoiceRecognizer(@Suppress("UNUSED_PARAMETER") context: Context) = true
+
+internal suspend fun releaseIdleVoiceRecognizer() = Unit

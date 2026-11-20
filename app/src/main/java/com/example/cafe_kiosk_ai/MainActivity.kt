@@ -1,6 +1,7 @@
 package com.example.cafe_kiosk_ai
 
 import android.Manifest
+import android.content.ComponentCallbacks2
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.View
@@ -37,6 +38,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var session: KioskSessionViewModel
     private var voice: VoiceController? = null
     private var tts: AndroidTtsEngine? = null
+    private var recordedPlayer: RecordedPromptPlayer? = null
     private var returningFromVoiceSettings = false
     private val testTextInput = TestTextInput()
     private var page: Page? = null
@@ -119,13 +121,20 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         foreground = false
         session.captureSpokenResponses(false)
-        stopAudio()
+        stopAudio(releaseTts = true)
         super.onPause()
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (::session.isInitialized && level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+            session.trimIdleModels()
+        }
     }
 
     override fun onDestroy() {
         testTextInput.detach()
-        stopAudio()
+        stopAudio(releaseTts = true)
         super.onDestroy()
     }
 
@@ -263,31 +272,43 @@ class MainActivity : AppCompatActivity() {
         val response = session.takeSpokenResponse(forPayment = !inConversation)
         if (response != null) {
             speakResponse(response, if (inConversation) Page.CONVERSATION else Page.PAYMENT)
+        } else if (session.hasSpokenResponses) {
+            showVoiceState(VoiceState.INITIALIZING_TTS)
         } else if (inConversation) {
-            syncVoiceInput()
+            if (session.canStartVoiceInput) syncVoiceInput() else showVoiceState(VoiceState.PREPARING)
         }
     }
 
-    private fun speakResponse(text: String, destination: Page) {
+    private fun speakResponse(response: KioskSessionViewModel.SpokenResponse, destination: Page) {
         cancelVoiceTurn()
         val speech = ++speechSequence
         activeSpeech = speech
-        val engine = tts ?: AndroidTtsEngine(this).also { tts = it }
-        showVoiceState(if (engine.isInitializing) VoiceState.INITIALIZING_TTS else VoiceState.SPEAKING)
-        engine.speak(text) { event ->
+        val recording = response.recording
+        val tracePrefix = if (recording == null) "TTS" else "RECORDED_PROMPT"
+        val detail = recording?.let { "prompt=${it.name}" }.orEmpty()
+        var playbackStarted = false
+        val onEvent: (TtsPlaybackEvent) -> Unit = onEvent@{ event ->
             if (activeSpeech == speech && isCurrentScreen(destination)) {
                 when (event) {
                     TtsPlaybackEvent.Started -> {
+                        playbackStarted = true
                         showVoiceState(VoiceState.SPEAKING)
-                        trace(speech, "TTS_STARTED")
+                        trace(speech, "${tracePrefix}_STARTED", detail)
                     }
                     TtsPlaybackEvent.Completed, TtsPlaybackEvent.Stopped -> {
-                        trace(speech, if (event == TtsPlaybackEvent.Completed) "TTS_COMPLETED" else "TTS_STOPPED")
+                        val terminal = if (event == TtsPlaybackEvent.Completed) "COMPLETED" else "STOPPED"
+                        trace(speech, "${tracePrefix}_$terminal", detail)
                         lastTtsError = null
                         finishSpeech()
                     }
                     is TtsPlaybackEvent.Error -> {
-                        trace(speech, "TTS_ERROR", "reason=${event.reason}")
+                        if (recording != null && !playbackStarted) {
+                            trace(speech, "RECORDED_PROMPT_FALLBACK", detail)
+                            session.retryWithTts(response)
+                            finishSpeech()
+                            return@onEvent
+                        }
+                        trace(speech, "${tracePrefix}_ERROR", "reason=${event.reason} $detail")
                         if (lastTtsError != event.reason) {
                             val message = when (event.reason) {
                                 TtsError.NO_ENGINE -> R.string.tts_no_engine
@@ -308,15 +329,26 @@ class MainActivity : AppCompatActivity() {
                             }
                             lastTtsError = event.reason
                         }
-                        finishSpeech()
+                        finishSpeech(releaseTts = recording == null)
                     }
                 }
             }
         }
+        if (recording != null) {
+            val player = RecordedPromptPlayer(this).also { recordedPlayer = it }
+            showVoiceState(VoiceState.INITIALIZING_TTS)
+            trace(speech, "RECORDED_PROMPT_REQUESTED", detail)
+            player.play(recording, onEvent)
+        } else {
+            val engine = tts ?: AndroidTtsEngine(this).also { tts = it }
+            showVoiceState(if (engine.isInitializing) VoiceState.INITIALIZING_TTS else VoiceState.SPEAKING)
+            engine.speak(response.text, onEvent)
+        }
     }
 
-    private fun finishSpeech() {
-        releaseSpeech()
+    private fun finishSpeech(releaseTts: Boolean = false) {
+        clearSpeech()
+        if (releaseTts) releaseTtsEngine()
         if (page != Page.CONVERSATION) showVoiceState(VoiceState.STOPPED)
         syncAudio()
     }
@@ -457,16 +489,22 @@ class MainActivity : AppCompatActivity() {
         voice = null
     }
 
-    private fun releaseSpeech() {
+    private fun clearSpeech() {
         activeSpeech = null
+        recordedPlayer?.release()
+        recordedPlayer = null
+    }
+
+    private fun releaseTtsEngine() {
         val engine = tts
         tts = null
         engine?.release()
     }
 
-    private fun stopAudio() {
+    private fun stopAudio(releaseTts: Boolean = false) {
         releaseVoice()
-        releaseSpeech()
+        clearSpeech()
+        if (releaseTts) releaseTtsEngine() else tts?.stop()
         consecutiveVoiceErrors = 0
         showVoiceState(VoiceState.STOPPED)
     }

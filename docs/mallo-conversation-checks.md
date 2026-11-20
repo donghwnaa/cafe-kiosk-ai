@@ -24,6 +24,16 @@ Windows에서 상태 관리, Fake NLU와 JSON 어댑터 테스트는 다음 명�
 
 ## 모델과 음성 연동 지점
 
+Qualcomm 보드에서 Genie 모델을 연속 주문에 재사용하려면 기존 Genie 번들에 ARM64 워커를 배포합니다. Windows용 Android NDK 경로와 보드의 ADB 시리얼을 지정합니다.
+
+```powershell
+.\tools\build-board-genie.ps1 -NdkPath C:\path\to\android-ndk -Serial 192.168.0.8:5555 -AdbPath C:\path\to\adb.exe
+```
+
+`adb logcat -s MalloGenie MalloGenieNative`에서 시작 시 `GENIE_PRELOAD_READY`와 `GENIE_WORKER`의 `reused`, `initMs`, `queryMs`, `firstMs`를 확인할 수 있습니다. 워커가 설치된 보드에서는 앱 시작 시 Genie를 백그라운드에서 로드합니다. 첫 요청은 입력 전체를 처리합니다. 이후에는 매번 전체 입력을 Genie에 전달하고, Genie의 KV rewind가 직전 완료 요청과 일치하는 접두부의 계산을 재사용합니다. 재사용에 실패하면 해당 워커에서 기존 전체 입력 경로로 처리합니다. `GENIE_PREFIX_REUSE`와 `GENIE_PREFIX_FALLBACK`을 확인할 수 있습니다.
+
+v3 워커는 주문 화면을 나갈 때 실행 중인 추론을 취소하고 응답을 정리한 뒤 모델을 재사용합니다. 취소 직후 요청은 대화 상태를 초기화하고 전체 입력을 처리합니다. 응답을 정리하지 못하면 워커를 다시 시작합니다. 유휴 상태에서 가용 메모리가 1GiB 아래로 내려가면 모델을 해제하고 다음 주문에서 필요한 경우 다시 로드합니다. 워커가 없거나 시작 핸드셰이크에 실패하면 `GENIE_CLI` 경로를 사용합니다.
+
 - `AndroidSpeechRecognizerController`는 `VoiceController`를 구현하고 최종 인식 텍스트와 상태를 `VoiceRecognitionEvent`로 전달합니다. 최종 텍스트, 카드 버튼과 디버그 입력은 `KioskSessionViewModel.submit(text)`를 거쳐 `ConversationManager.handleUserInput(text)`로 들어갑니다.
 - `NluEngine.analyze(text, context)`에 현재 세션 ID, 질문 대상, 대화, 임시 주문과 장바구니 항목 ID를 전달합니다. `LlmNluEngine`을 사용하려면 실제 모델 호출을 구현하는 `LlmEngine`과 배포된 v9 형식에 맞춘 `FunctionCallAdapter`를 주입합니다.
 - 현재 테스트 JSON의 한 예는 `{"function":"change_quantity","target_id":"<cart item ID>","quantity":2}`입니다. 앱이 같은 ID의 항목을 검증하고, 수량은 사용자가 확인할 때 반영합니다. 가격과 판매 옵션은 `MenuCatalog`에서 결정합니다.

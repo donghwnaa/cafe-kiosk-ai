@@ -58,11 +58,12 @@ internal class AndroidTtsEngine(
     private var candidateIndex = 0
     private var generation = 0
     private var selectedEngine: String? = null
-    private var retryAfterPlayback = false
+    private var retriedBeforePlayback = false
     private var playbackStarted = false
     private val initTimeout = Runnable { failInitialization(TtsError.INITIALIZATION, "Initialization timed out") }
     private val playbackTimeout = Runnable {
         val id = current?.id ?: return@Runnable
+        if (retryBeforePlayback("Speech did not start")) return@Runnable
         stopPlatform()
         complete(id, TtsPlaybackEvent.Error(TtsError.PLAYBACK), "Playback timed out")
     }
@@ -117,7 +118,7 @@ internal class AndroidTtsEngine(
             return
         }
         current = Utterance(UUID.randomUUID().toString(), text, onEvent)
-        retryAfterPlayback = false
+        retriedBeforePlayback = false
         playbackStarted = false
         if (!isInitializing) scheduleCurrent()
     }
@@ -220,6 +221,8 @@ internal class AndroidTtsEngine(
             handler.post {
                 current?.takeIf { it.id == utteranceId }?.let {
                     playbackStarted = true
+                    handler.removeCallbacks(playbackTimeout)
+                    handler.postDelayed(playbackTimeout, maxOf(30_000L, it.text.length * 350L))
                     Log.i(TAG, "TTS_PLAYBACK_STARTED engine=$selectedEngine utterance=$utteranceId")
                     it.onEvent(TtsPlaybackEvent.Started)
                 }
@@ -243,14 +246,11 @@ internal class AndroidTtsEngine(
                 Log.w(TAG, "TTS_PLAYBACK_ERROR engine=$selectedEngine code=$errorCode utterance=$utteranceId")
                 val reason = if (errorCode == TextToSpeech.ERROR_NOT_INSTALLED_YET)
                     TtsError.KOREAN_UNAVAILABLE else TtsError.PLAYBACK
-                // Retry the whole prompt only when synthesis failed before playback because voice data was missing.
-                if (reason == TtsError.KOREAN_UNAVAILABLE && !playbackStarted &&
-                    !retryAfterPlayback && candidateIndex + 1 < engineCandidates.size) {
-                    retryAfterPlayback = true
-                    handler.removeCallbacks(playbackTimeout)
-                    current = current?.copy(id = UUID.randomUUID().toString())
-                    failInitialization(reason, "Voice data disappeared during synthesis")
-                    return@post
+                when (errorCode) {
+                    TextToSpeech.ERROR_NOT_INSTALLED_YET ->
+                        if (retryBeforePlayback("Voice data disappeared during synthesis", reason)) return@post
+                    TextToSpeech.ERROR_SERVICE, TextToSpeech.ERROR ->
+                        if (retryBeforePlayback("TTS service error: $errorCode")) return@post
                 }
                 complete(utteranceId, TtsPlaybackEvent.Error(reason), "Android playback error: $errorCode")
             }
@@ -281,12 +281,23 @@ internal class AndroidTtsEngine(
             TextToSpeech.ERROR
         }
         if (status == TextToSpeech.SUCCESS) {
-            // Recover if a service disappears without sending a terminal callback.
-            val timeout = maxOf(30_000L, utterance.text.length * 350L)
-            handler.postDelayed(playbackTimeout, timeout)
-        } else {
+            handler.postDelayed(playbackTimeout, 10_000L)
+        } else if (!retryBeforePlayback("Android queue status: $status")) {
             complete(utterance.id, TtsPlaybackEvent.Error(TtsError.PLAYBACK), "Android queue status: $status")
         }
+    }
+
+    private fun retryBeforePlayback(detail: String, nextEngineFor: TtsError? = null): Boolean {
+        val utterance = current ?: return false
+        if (playbackStarted || retriedBeforePlayback) return false
+        if (nextEngineFor != null && candidateIndex + 1 >= engineCandidates.size) return false
+        retriedBeforePlayback = true
+        handler.removeCallbacks(playbackTimeout)
+        // Ignore late callbacks from the attempt that lost its service.
+        current = utterance.copy(id = UUID.randomUUID().toString())
+        Log.w(TAG, "TTS_PLAYBACK_RETRY engine=$selectedEngine reason=$detail")
+        if (nextEngineFor != null) failInitialization(nextEngineFor, detail) else bindCandidate()
+        return true
     }
 
     private fun complete(id: String, event: TtsPlaybackEvent, detail: String? = null) {

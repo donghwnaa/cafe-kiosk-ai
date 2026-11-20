@@ -33,6 +33,22 @@ sherpa-onnx는 Apache-2.0, ONNX Runtime과 Silero VAD는 MIT입니다. SenseVoic
 
 Silero와 SenseVoice는 APK에 포함된 파일을 읽어 기기 CPU에서 실행합니다. 녹음은 발화가 끝나면 닫히고 SenseVoice 결과는 발화당 한 번 전달됩니다. Android TTS는 기존 엔진을 사용하며 오프라인 재생에는 로컬 한국어 음성이 필요합니다. [Android VAD + 비스트리밍 STT 예제](https://github.com/k2-fsa/sherpa-onnx/tree/v2.0.1/android/SherpaOnnxVadAsr) · [Silero 모델과 예제](https://k2-fsa.github.io/sherpa/onnx/vad/silero-vad.html) · [SenseVoice 모델과 ITN 설정](https://k2-fsa.github.io/sherpa/onnx/sense-voice/pretrained.html)
 
+SenseVoice는 APK의 약 239MB 모델과 토큰을 앱 전용 저장소에 한 번 풉니다. 모델 버전이 바뀌면 다시 준비하며, 파일을 준비할 수 없으면 APK 자산으로 로드합니다. 앱은 SenseVoice 파일을 먼저 준비하고, Genie가 초기 로딩을 끝낸 뒤 SenseVoice 인식기를 생성합니다. 이후 발화마다 새 입력 스트림으로 같은 인식기를 씁니다. Android가 저메모리 상태를 보고하거나 가용 메모리가 1GiB 아래로 내려가면 사용 중인 인식이 끝난 후 인식기를 해제합니다. `MalloStt`의 `SENSEVOICE_FILES_READY`, `SENSEVOICE_PRELOAD_READY`, `SENSEVOICE_DECODE reused=true`, `SENSEVOICE_RELEASED`로 상태를 확인할 수 있습니다.
+
+첫 인사와 장바구니 조회(상품 있음·없음), 주문 반영 안내는 보드의 Supertonic 3 `ko-KR` 음색과 앱 기본 속도로 합성한 WAV를 `res/raw`에서 재생합니다. 첫 인사는 모델 준비 중에도 들을 수 있습니다. 첫 인사가 끝나면 Genie 로딩 중에도 마이크를 열 수 있습니다. 녹음이 먼저 끝나면 Genie 초기화와 SenseVoice 인식기 준비가 끝난 뒤 음성을 텍스트로 바꿉니다. 주문마다 달라지는 문구는 TTS로 재생하고, 그 서비스가 재생 시작 전에 응답을 잃으면 한 번 다시 연결합니다. `MalloAudio`의 `RECORDED_PROMPT_STARTED`와 `RECORDED_PROMPT_COMPLETED`, `MalloTts`의 `TTS_PLAYBACK_RETRY`로 확인할 수 있습니다.
+
+Supertonic 3은 첫 일반 안내를 합성할 때 모델을 로드합니다. 일반 안내는 기본 5단계로 합성하고, 앱이 화면에 있는 동안에는 주문 화면을 오가도 같은 모델을 재사용합니다. Android가 메모리 압박을 알리거나 시스템 가용 메모리가 1GiB 아래로 내려가면 현재 합성이 끝난 뒤 모델을 해제합니다. 앱이 백그라운드로 가면 TTS 연결을 닫습니다. `MalloOfflineTts`의 `OFFLINE_TTS_GENERATE steps=5`, `OFFLINE_TTS_MODEL_USED`와 `OFFLINE_TTS_MODEL_RELEASED`로 확인할 수 있습니다.
+
+최초 합성 때 Supertonic 모델 파일 7개를 앱의 백업 제외 저장소에 복사하고 SHA-256을 검증합니다. 이후에는 파일 경로로 모델을 엽니다. 모델 버전이나 파일 크기가 바뀌면 다시 복사하며, 복사 중단은 다음 실행에서 재시도합니다. 파일을 준비할 수 없으면 APK 자산을 사용합니다. `OFFLINE_TTS_MODEL_READY source=file`로 로딩 경로를 확인합니다.
+
+문구나 음색을 갱신할 때는 보드에서 `RecordedPromptExportTest`를 `-e exportRecordedPrompts true`로 실행해 `cache/recorded-prompt-export/`에 WAV를 다시 생성합니다.
+
+기기에서 두 로더를 비교하려면 디버그 앱과 `:app:assembleDebugAndroidTest`의 테스트 APK를 설치합니다. 16kHz 이상의 모노 PCM WAV를 앱의 캐시 디렉터리에 복사한 뒤 아래 계측 테스트를 실행합니다. `withGenie=true`는 Genie도 올려 실제 주문에 가까운 메모리 상태에서 비교합니다. `MalloSttBenchmark`에 인식기 생성 시간, 전체 인식 시간, 프로세스 RSS 피크와 시스템 가용 메모리 최솟값을 남깁니다.
+
+```powershell
+adb shell am instrument -w -e class com.example.cafe_kiosk_ai.SenseVoiceLoadingTest -e senseVoiceWav /data/user/0/com.example.cafe_kiosk_ai/cache/mallo-sensevoice-ab.wav -e withGenie true com.example.cafe_kiosk_ai.test/androidx.test.runner.AndroidJUnitRunner
+```
+
 ## 오프라인 마이크 검증과 비교 방법
 
 1. SenseVoice APK를 기기에 설치하고 Android TTS에 한국어 로컬 음성이 준비돼 있는지 확인합니다. 기기에서 비행기 모드를 켜고 Wi-Fi와 모바일 데이터를 끕니다. 에뮬레이터에 직접 말하려면 Extended Controls → Microphone → **Enable Host Microphone Access**를 켭니다. 버전에 따라 **Virtual microphone uses host audio input**으로 표시됩니다. [Android Emulator 마이크 안내](https://developer.android.com/studio/run/emulator-extended-controls)
